@@ -1470,6 +1470,7 @@ async function route(url: URL, method: string, init: RequestInit | undefined, in
     return json({ workspace_id: made.workspace_id, pane_id: made.pane_id, already_open: false, path: checkout.path, branch: checkout.branch, ...(agent ? { agent_started: made.agent_started } : {}) } satisfies WorktreeOpened);
   }
 
+  if (path === "/api/pane/browser") return json({ session: null, tabs: [] });
   if (path === "/api/pane/conversation") {
     const key = keyOfPane.get(paneId);
     const chat = key ? chats.get(key) : undefined;

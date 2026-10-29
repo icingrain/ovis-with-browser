@@ -333,6 +333,22 @@ const BASE: Record<string, string> = {
   "Weekly": "週次",
   "Open terminal": "ターミナルを開く",
   "Sign in to {agent}": "{agent} にサインイン",
+  "Browser": "ブラウザー",
+  "Choose option": "項目を選択",
+  "Browser dialog": "ブラウザーのダイアログ",
+  "Response": "回答",
+  "OK": "OK",
+  "Browser tab": "ブラウザーのタブ",
+  "Browser unavailable": "ブラウザーを利用できません",
+  "Browser connection lost": "ブラウザーとの接続が切れました",
+  "No browser tabs": "開いているブラウザーのタブがありません",
+  "Loading browser…": "ブラウザーを読み込み中…",
+  "Browser tab screenshot": "ブラウザーのタブの画面",
+  "Take control": "操作する",
+  "Controlling": "操作中",
+  "Release": "操作を終了",
+  "Take control to show this tab": "このタブを表示するには操作を有効にしてください",
+  "Take control to switch tabs": "タブを切り替えるには操作を有効にしてください",
 };
 
 /** The parts JA is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

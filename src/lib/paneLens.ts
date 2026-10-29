@@ -7,7 +7,7 @@ import type { DefaultView } from "./settings.ts";
  * agent pane on a touch screen. Until the snapshot says whether the pane has an agent (null),
  * it counts as one.
  */
-export function defaultLens(hasAgent: boolean | null, defaultView: DefaultView, coarse: boolean): PaneView {
+export function defaultLens(hasAgent: boolean | null, defaultView: DefaultView, coarse: boolean): "chat" | "terminal" {
   if (defaultView === "chat") return hasAgent !== false ? "chat" : "terminal";
   if (defaultView === "terminal") return "terminal";
   return hasAgent !== false && coarse ? "chat" : "terminal";
@@ -21,10 +21,10 @@ export function defaultLens(hasAgent: boolean | null, defaultView: DefaultView, 
  * always wins.
  */
 export class PaneLenses {
-  private readonly settled = new Map<string, PaneView>();
+  private readonly settled = new Map<string, "chat" | "terminal">();
   constructor(private readonly defaultView: DefaultView) {}
 
-  of(key: string, hasAgent: boolean | null, coarse: boolean): PaneView {
+  of(key: string, hasAgent: boolean | null, coarse: boolean): "chat" | "terminal" {
     const settled = this.settled.get(key);
     if (settled !== undefined) return settled;
     const lens = defaultLens(hasAgent, this.defaultView, coarse);
@@ -41,4 +41,12 @@ export class PaneLenses {
   startedAgent(key: string, coarse: boolean): void {
     this.settled.set(key, defaultLens(true, this.defaultView, coarse));
   }
+}
+
+/** Return from a Browser session that ended: keep the lens used before Browser, else use this pane's default. */
+export function browserFallback(lenses: PaneLenses, key: string, previous: PaneView | undefined, hasAgent: boolean | null, terminalAttach: boolean, coarse: boolean): "chat" | "terminal" {
+  if (previous === "chat") return "chat";
+  if (!terminalAttach) return "chat";
+  if (previous === "terminal") return "terminal";
+  return lenses.of(key, hasAgent, coarse);
 }

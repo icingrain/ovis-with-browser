@@ -1,7 +1,7 @@
 /**
  * The address says where the app is, so any moment can be linked to and returned to:
  *
- *   ?machine=<pc>&ws=<id>-<slug>&pane=<pane>&view=chat|terminal&file=<path>&settings=<page>&section=<group>
+ *   ?machine=<pc>&ws=<id>-<slug>&pane=<pane>&view=chat|terminal|browser&file=<path>&settings=<page>&section=<group>
  *   ?new=workspace|tab&cwd=<folder>&name=<name>&agent=<kind>
  *   &sidebar=hidden|shown
  *
@@ -24,7 +24,7 @@
  */
 import type { SessionSnapshot } from "../../shared/protocol.ts";
 
-export type LinkView = "chat" | "terminal";
+export type LinkView = "chat" | "terminal" | "browser";
 
 export interface AppLink {
   machine: string;
@@ -107,7 +107,7 @@ export function readLink(search: string): AppLink {
     workspace: ws && cut > 0 ? ws.slice(0, cut) : ws,
     workspaceSlug: ws && cut > 0 ? named(ws.slice(cut + 1)) : null,
     pane: named(query.get("pane")),
-    view: view === "chat" || view === "terminal" ? view : null,
+    view: view === "chat" || view === "terminal" || view === "browser" ? view : null,
     file: named(query.get("file")),
     settings,
     section: settings ? named(query.get("section")) : null,

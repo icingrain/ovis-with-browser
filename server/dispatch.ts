@@ -3,6 +3,7 @@ import { connectionData, type createCore, type SocketData } from "./core/index.t
 import type { ClientConnectionLog } from "./client-connection-log.ts";
 import type { RequestLog } from "./request-log.ts";
 import { handlePaneRequest } from "./pane-routes.ts";
+import type { BrowserSessions } from "./browser-sessions.ts";
 import { handleIntegrationsRequest } from "./integrations-routes.ts";
 import type { OrderSequence } from "./order-sequence.ts";
 import type { DevicePairedEvent, HealthAuth, SecuritySummary, SessionSnapshot } from "../shared/protocol.ts";
@@ -89,6 +90,7 @@ export interface RequestServices {
   readonly orderSequence: OrderSequence;
   readonly clientConnectionLog: ClientConnectionLog;
   readonly requestLog: RequestLog;
+  readonly browserSessions: BrowserSessions;
   readonly portalStartupResult: PortalStartup | undefined;
   readonly portalStartup: Promise<PortalStartup>;
 }
@@ -105,7 +107,7 @@ export interface ServerContext {
 }
 
 export async function handleRequest(request: Request, ctx: ServerContext): Promise<Response | undefined> {
-  const { options, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, portalStartupResult, portalStartup } = ctx.services;
+  const { options, hostname, token, bridgeToken, bootId, devices, preferences, herdrSidebar, identityOf, serveOnly, portalGuards, shellAgents, agentDetector, agentOffered, agentInstaller, openCodeState, cliProxyRoutes, usageLogin, usage, voice, browserSnapshot, core, seen, piReader, orderSequence, clientConnectionLog, requestLog, browserSessions, portalStartupResult, portalStartup } = ctx.services;
   const { sidecar, serialize, push, logPushError, omo, claudeAgents, opencodeAgents, plans, clientSnapshot, machines, broadcastAll, collector, queueFirstMessage } = core;
   return requestLog.handle(request, async (headers) => {
   const startup = portalStartupResult ?? await portalStartup;
@@ -474,6 +476,9 @@ export async function handleRequest(request: Request, ctx: ServerContext): Promi
 
   const pluginResponse = await handlePluginRequest(request, url, pathname, options);
   if (pluginResponse) return pluginResponse;
+
+  const browserResponse = await browserSessions.handle(request, url, pathname);
+  if (browserResponse) return browserResponse;
 
   const paneResponse = await handlePaneRequest(request, url, pathname, options);
   if (paneResponse) return paneResponse;

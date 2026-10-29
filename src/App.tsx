@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bell, Ellipsis, FolderOpen, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
+import { Bell, Ellipsis, FolderOpen, Globe, Link, Menu, MessageSquare, PanelLeft, Search, SquareTerminal, X } from "lucide-react";
 
 import type { HerdrPane } from "../shared/protocol.ts";
 import { authenticate, createTab, moveTabToWorkspace, paneSessionKey, shareSeen, swapPaneWith } from "./lib/api.ts";
@@ -9,6 +9,8 @@ import { endSignIn } from "./lib/signOut.ts";
 import { PaneCanvas } from "./components/PaneCanvas.tsx";
 import { MachineSessionsProvider } from "./lib/machineSessionContext.tsx";
 import { PaneTerminal } from "./components/PaneTerminal.tsx";
+import { BrowserView } from "./components/BrowserView.tsx";
+import { useBrowserSession } from "./lib/useBrowserSession.ts";
 import { paneCovered, paneContentKey, paneContentPresented } from "./lib/panePresentation.ts";
 import { PANE_TABPANEL_ID, paneTabPanelLabel } from "./lib/paneRegion.ts";
 import { worktreeRepoName } from "./lib/composerStrip.ts";
@@ -55,6 +57,8 @@ import { useShownMachines } from "./lib/hiddenMachines.ts";
 import { formatKeys, shortcutDisplayKeys, useShortcuts } from "./lib/shortcuts.ts";
 import { useMediaQuery } from "./lib/useMediaQuery.ts";
 import { useAnnouncedText } from "./lib/useAnnouncedText.ts";
+import { browserFallback } from "./lib/paneLens.ts";
+import { paneLifetimes } from "./lib/paneLifetime.ts";
 import { paneContextPress } from "./lib/paneCanvas.ts";
 import type { AppActions, PaneView, PaneControls } from "./lib/actions.ts";
 import { removePushSubscription } from "./lib/push.ts";
@@ -197,7 +201,7 @@ export function App() {
   const { rosterIn, pendingFile, selectionHint, setHeaderNote, note, autoSelected, setAutoSelected } = useLinkLanding({ initialLink, otherRecheck, setOtherRosterTick, pendingLink, rosterSeq, setRosterTick, linkLanded, t });
   const { drawerOpen, setDrawerOpen, drawerOpenRef, wideScreen, sidebarCollapsed, setSidebarCollapsed, sidebarWidth, setSidebarWidth, filePanelAvailable, filePanelWidth, setFilePanelWidth, sidebarFilterRequest, openSidebarFilter } = useSidebarLayout({ initialLink });
   const { selectionRef, movingPanes } = useSelectionMark({ selectedMachineId, selectedPaneId });
-  const { lens, setLens, viewPicks, setViewPicks } = usePaneLensState();
+  const { lens, setLens, viewPicks, setViewPicks, browserReturnViews } = usePaneLensState();
   const { split, setSplit, soloSlot, endSplit, splitRef, splitShownRef, lastKeyAtRef, paneDragging, setPaneDragging, dropAt, dropAtRef, showDropTarget, clearDropPreview, paneAreaRef, tabDrag, draggedPaneRef, markSwap } = useSplitState();
   const { paletteOpen, paletteQuery, openPalette, setPaletteOpen } = useCommandPalette();
   const paneControls = useRef<PaneControls | null>(null);
@@ -329,6 +333,7 @@ export function App() {
 
 
   const { selectedPane } = useSelectedPane({ snapshot, selectedPaneId });
+  const { browserSession, setBrowserSession, browserSessionGoneRef } = useBrowserSession({ selectedPaneId, selectedMachineId });
   useScreenWakeLock(settings.keepScreenOn && locked === false && selectedPane !== null);
   const { selectedWorkspace, presentedPaneId } = useSelectedLayout({ selectedPane, snapshot, drawerOpen, selectedMachineId, selectedPaneId, setSelectedPaneId, setAutoSelected });
   // the selected pane has a tab strip to rename in: its pane and workspace are in the roster
@@ -367,7 +372,25 @@ export function App() {
   // one source for the sidebar's two lists: live counters per PC and finishes looked at here
   const activity = useSidebarActivityState(machines, selectedMachineId, presentedPaneId, paneInFront, shareSeen);
 
-  const { pickView, setView } = usePaneViewPicks({ setViewPicks, setNotificationViewTarget, setTerminalPeek, setLens, setAutoSelected, selectedPaneId, selectedMachineId });
+  const { pickView, setView } = usePaneViewPicks({ browserReturnViews, setViewPicks, setNotificationViewTarget, setTerminalPeek, setLens, setAutoSelected, selectedPaneId, selectedMachineId });
+  const browserSessionGone = useCallback((paneId: string) => {
+    const owner = lensOwner("local", paneId);
+    const storageKey = `ovis:view:${paneStorageId("local", paneId)}`;
+    const pane = snapshot?.panes.find((entry) => entry.pane_id === paneId);
+    const previous = browserReturnViews.current.get(paneStorageId("local", paneId));
+    const fallback = browserFallback(lenses, owner, previous, pane ? pane.agent != null : null, terminalAttach, window.matchMedia?.("(pointer: coarse)").matches === true);
+    browserReturnViews.current.delete(paneStorageId("local", paneId));
+    setViewPicks((current) => current.get(owner) === "browser" ? new Map(current).set(owner, fallback) : current);
+    try {
+      if (paneLifetimes.paneStorage.getItem(storageKey) === "browser") paneLifetimes.paneStorage.setItem(storageKey, fallback);
+    } catch { /* private mode */ }
+    if (selectedMachineId === "local" && selectedPaneId === paneId) {
+      setBrowserSession(null);
+      setLens((current) => current.view === "browser" ? { ...current, view: fallback } : current);
+      setNotificationViewTarget((current) => current?.pane_id === paneId && current.view === "browser" ? null : current);
+    }
+  }, [lenses, selectedMachineId, selectedPaneId, snapshot, terminalAttach, setViewPicks, setLens, setNotificationViewTarget]);
+  browserSessionGoneRef.current = browserSessionGone;
   const { unsentFor, openUnsent, closeUnsent, recover } = useUnsentRecovery({ selectedMachineId, selectedPaneId, setView, pickView });
   // on a phone a peek is a step of its own: Back takes the chat back, as it closes a sheet. It stays
   // up under a sheet or Settings opened over it: their close, or a Back, comes back to the peek
@@ -701,6 +724,10 @@ export function App() {
               <span className="header-desktop-only">{t("Terminal")}</span>
               {!terminalAttach && <span className="pill pill-soon">{t("soon")}</span>}
             </button>
+            {selectedMachineId === "local" && browserSession?.pane_id === selectedPane.pane_id && <button type="button" aria-pressed={view === "browser"} onClick={() => { setView("browser"); setDrawerOpen(false); }} title={t("Browser")}>
+              <Globe />
+              <span className="header-desktop-only">{t("Browser")}</span>
+            </button>}
           </div>
         )}
         {selectedPane && wideScreen && (
@@ -898,7 +925,7 @@ export function App() {
                     onOpenInHalf={wideScreen ? (id, side) => dockSide({ machineId, paneId: id }, side) : undefined}
                     onRecoverUnsent={(target) => openUnsent({ machineId, pane: target })}
                     renderPane={(item, itemActive, herdrSplit) => <OpenFileContext.Provider value={item ? (path) => openFile({ path, paneId: item.pane_id, machineId }) : null}>
-                      <PaneTerminal
+                      {item && machineId === "local" && lensOf(item) === "browser" ? <BrowserView paneId={item.pane_id} presentationKey={paneContentKey(machine, item, "browser")} onSessionGone={browserSessionGone} /> : <PaneTerminal
                         presentationKey={paneContentKey(machine, item, item ? lensOf(item) : slotView)}
                         finishEpoch={machine?.snapshot?.finish_epoch}
                         finishId={item?.finish_id}
@@ -945,7 +972,7 @@ export function App() {
                         palette={resolvedEntry.id}
                         onConnectionChange={active && itemActive ? (next, before) => { setConnected(next); setConnectedBefore(before); setReportedBy(`${slot}:${machineId}`); if (next) setOutputStopped(false); } : undefined}
                         onServerMessage={active && itemActive ? handleServerMessage : undefined}
-                      />
+                      />}
                     </OpenFileContext.Provider>} />
                   </div>
                 </main>

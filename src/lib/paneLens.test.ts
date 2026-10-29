@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { defaultLens, PaneLenses } from "./paneLens.ts";
+import { browserFallback, defaultLens, PaneLenses } from "./paneLens.ts";
 
 describe("defaultLens", () => {
   it("follows Settings: chat for an agent (or one not known yet), the terminal for a shell", () => {
@@ -53,5 +53,20 @@ describe("PaneLenses", () => {
     const lenses = new PaneLenses("chat");
     expect(lenses.of("local/w1:p1", true, false)).toBe("chat");
     expect(lenses.of("remote/w1:p1", false, false)).toBe("terminal");
+  });
+});
+
+describe("browserFallback", () => {
+  it("restores the pane's previous lens after its browser session ends", () => {
+    const lenses = new PaneLenses("terminal");
+    expect(browserFallback(lenses, "local/p1", "chat", true, true, false)).toBe("chat");
+    expect(browserFallback(lenses, "local/p2", "terminal", true, true, true)).toBe("terminal");
+  });
+
+  it("uses the pane's default after a reload and keeps unsupported terminals on chat", () => {
+    const lenses = new PaneLenses("auto");
+    expect(browserFallback(lenses, "local/p1", undefined, true, true, true)).toBe("chat");
+    expect(browserFallback(lenses, "local/p2", undefined, false, true, true)).toBe("terminal");
+    expect(browserFallback(lenses, "local/p3", "terminal", true, false, false)).toBe("chat");
   });
 });

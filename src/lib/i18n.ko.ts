@@ -331,6 +331,22 @@ const BASE: Record<string, string> = {
   "Weekly": "주간",
   "Open terminal": "터미널 열기",
   "Sign in to {agent}": "{agent}에 로그인",
+  "Browser": "브라우저",
+  "Choose option": "옵션 선택",
+  "Browser dialog": "브라우저 대화상자",
+  "Response": "응답",
+  "OK": "확인",
+  "Browser tab": "브라우저 탭",
+  "Browser unavailable": "브라우저를 사용할 수 없어요",
+  "Browser connection lost": "브라우저 연결이 끊겼어요",
+  "No browser tabs": "열린 브라우저 탭이 없어요",
+  "Loading browser…": "브라우저 불러오는 중…",
+  "Browser tab screenshot": "브라우저 탭 화면",
+  "Take control": "제어하기",
+  "Controlling": "제어 중",
+  "Release": "제어 끝내기",
+  "Take control to show this tab": "이 탭을 표시하려면 제어하기를 켜세요",
+  "Take control to switch tabs": "탭을 바꾸려면 제어하기를 켜세요",
 };
 
 /** The parts KO is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

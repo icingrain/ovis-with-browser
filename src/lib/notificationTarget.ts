@@ -1,6 +1,6 @@
 import type { AppLink } from "./deepLink.ts";
 
-export type NotificationPaneView = "chat" | "terminal";
+export type NotificationPaneView = "chat" | "terminal" | "browser";
 /** `workspace_id`: the workspace the pane was last seen in (server/push.ts), so an ended pane's tap opens it. */
 export type NotificationTarget = { machine_id: string; pane_id: string; view?: NotificationPaneView; workspace_id?: string };
 type Target = NotificationTarget;
@@ -10,7 +10,7 @@ export function notificationTargetFromSearch(search: string): NotificationTarget
   const params = new URLSearchParams(search);
   const pane_id = params.get("pane");
   const view = params.get("view");
-  if (!pane_id || (view !== "chat" && view !== "terminal")) return null;
+  if (!pane_id || (view !== "chat" && view !== "terminal" && view !== "browser")) return null;
   return { machine_id: params.get("machine") ?? "local", pane_id, view };
 }
 
@@ -66,7 +66,7 @@ export function notificationTargets(source?: MessageSource): (select: Select) =>
       machine_id: typeof data.machine_id === "string" ? data.machine_id : "local",
       pane_id: data.pane_id,
     };
-    if (data.view === "chat" || data.view === "terminal") target.view = data.view;
+    if (data.view === "chat" || data.view === "terminal" || data.view === "browser") target.view = data.view;
     if (typeof data.workspace_id === "string" && data.workspace_id !== "") target.workspace_id = data.workspace_id;
     if (consumer) consumer(target);
     else pending = target;

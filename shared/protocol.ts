@@ -328,6 +328,14 @@ export type { DevicePairedEvent, Machine, MachineEvent, MachineRoster, PaneTarge
  *         as it does for a send cancelled before any reply; older servers send neither)
  *  POST   /api/pane/prompt/answer { pane_id, prompt_id, option_index?, option_indices?, custom_text? }
  *         -> { ok: true } | 409 prompt_changed (the screen no longer shows that prompt)
+ *  POST   /api/pane/browser/register { pane_id, cdp_url } -> { session: BrowserSession }
+ *  GET    /api/pane/browser?pane_id=&foreground=1? -> { session: BrowserSession | null, tabs: BrowserTab[], foreground_tab_id: string | null }
+ *  DELETE /api/pane/browser?pane_id= -> { ok: true }
+ *  GET    /api/pane/browser/stream?pane_id=&tab_id= -> SSE ready/frame/select/select-close/dialog/dialog-close events
+ *  POST   /api/pane/browser/control { stream_id, enabled } -> { controlled }
+ *  POST   /api/pane/browser/input { stream_id, event } -> { ok: true }
+ *  POST   /api/pane/browser/select { stream_id, index } -> { ok: true }
+ *  POST   /api/pane/browser/dialog { stream_id, accept, promptText? } -> { ok: true }
  *  POST   /api/workspace/create { cwd?, label?, agent?: { kind, name?, args? } }
  *         -> WorkspaceCreated (workspace.create, then agent.start in the root pane when `agent` is given;
  *         omo, gjc and dsh-tui, which herdr cannot start, are typed into the root pane's shell)
@@ -1103,3 +1111,16 @@ export type { SessionHistoryAgent, SessionResumeSource, SessionHistoryRow, Sessi
 /** herdr's default socket, under XDG_CONFIG_HOME when set, as herdr itself resolves it. */
 export const HERDR_SOCKET_PATH = `${process.env["XDG_CONFIG_HOME"] || `${process.env["HOME"] ?? ""}/.config`}/herdr/herdr.sock`;
 export const DEFAULT_PORT = 7317;
+
+/** A pane's locally registered Chrome DevTools endpoint. The browser client never connects to it directly. */
+export interface BrowserSession {
+  pane_id: string;
+  cdpUrl: string;
+  registeredAt: number;
+}
+
+export interface BrowserTab {
+  id: string;
+  title: string;
+  url: string;
+}

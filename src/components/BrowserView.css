@@ -1,0 +1,26 @@
+.browser-view { display: flex; flex-direction: column; min-height: 0; height: 100%; background: var(--bg); color: var(--text); }
+.browser-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-3); border-bottom: var(--hairline) solid var(--border); }
+.browser-tab-picker { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; }
+.browser-tab-label { flex: 0 0 auto; color: var(--text-dim); }
+.browser-tab-trigger { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-width: 0; max-width: 100%; flex: 1; height: var(--control-h); padding: 0 var(--space-2); border: var(--hairline) solid var(--border); border-radius: var(--radius-md); background: var(--bg-input); color: var(--text); text-align: left; cursor: pointer; }
+.browser-tab-trigger:disabled { color: var(--text-dim); cursor: not-allowed; }
+.browser-tab-trigger:focus-visible { outline: var(--hairline) solid var(--accent); }
+.browser-tab-trigger svg { width: var(--icon-size); height: var(--icon-size); flex: 0 0 auto; color: var(--text-dim); }
+.browser-tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tab-menu { position: fixed; z-index: calc(var(--z-drawer) + 1); overflow-y: auto; }
+.browser-tab-option { width: 100%; min-width: 0; }
+.browser-tab-option-text { display: flex; flex-direction: column; min-width: 0; }
+.browser-tab-option-title, .browser-tab-option-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tab-option-url { color: var(--text-dim); font-size: var(--fs-xs); }
+.browser-tab-option[data-active="true"] { background: var(--bg-hover); color: var(--text-strong); }
+.browser-status { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4); color: var(--text-dim); }
+.browser-frame { min-height: 0; overflow: auto; text-align: center; flex: 1; }
+.browser-frame.is-controlling { border: var(--hairline) solid var(--accent); }
+.browser-control-label { color: var(--text-strong); font-weight: 600; }
+.browser-frame img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.browser-frame img:focus-visible { outline: var(--hairline) solid var(--accent); }
+.browser-select-menu { position: fixed; z-index: calc(var(--z-drawer) + 1); min-width: 220px; max-width: min(360px, 90vw); max-height: min(320px, 60vh); overflow: auto; }
+.browser-select-menu .menu-item { width: 100%; }
+.browser-dialog { max-width: min(420px, 90vw); }
+.browser-dialog .modal-body p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.browser-dialog .modal-body input { width: 100%; }

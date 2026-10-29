@@ -7,7 +7,7 @@
 import type { SplitPaneDirection } from "../../shared/protocol.ts";
 import type { ZoomMode } from "./layoutMap.ts";
 
-export type PaneView = "chat" | "terminal";
+export type PaneView = "chat" | "terminal" | "browser";
 
 /** The selected pane’s mounted input and history, bound to its PC. */
 export interface PaneControls {

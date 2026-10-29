@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { HerdrPane } from "../../shared/protocol.ts";
 import { paneStorageId } from "../../shared/machines.ts";
 import { prefetchPaneConversation } from "./api.ts";
@@ -29,16 +29,18 @@ export function lensOwner(machineId: string, paneId: string): string {
 
 /** `hasAgent`: herdr leaves `agent` out for a shell, so callers compare with `!= null`; `keep` false only asks (a press, not a pick) */
 export function storedView(lenses: PaneLenses, picks: ReadonlyMap<string, PaneView>, paneId: string, machineId: string, hasAgent: boolean | null, terminalAttach: boolean, keep = true): PaneView {
-  if (!terminalAttach) return "chat";
   const key = lensOwner(machineId, paneId);
   const picked = picks.get(key);
-  if (picked !== undefined) return picked;
+  let stored: string | null = null;
   try {
-    const stored = paneLifetimes.paneStorage.getItem(`ovis:view:${paneStorageId(machineId, paneId)}`);
-    if (stored === "chat" || stored === "terminal") return stored;
+    stored = paneLifetimes.paneStorage.getItem(`ovis:view:${paneStorageId(machineId, paneId)}`);
   } catch {
     /* private mode */
   }
+  if (machineId === "local" && (picked === "browser" || stored === "browser")) return "browser";
+  if (!terminalAttach) return "chat";
+  if (picked !== undefined) return picked;
+  if (stored === "chat" || stored === "terminal") return stored;
   const coarse = window.matchMedia?.("(pointer: coarse)").matches === true;
   return keep ? lenses.of(key, hasAgent, coarse) : lenses.peek(key, hasAgent, coarse);
 }
@@ -47,7 +49,9 @@ export function usePaneLensState() {
   const [lens, setLens] = useState<{ key: string; view: PaneView }>({ key: "", view: "terminal" });
   // Explicit lens choices stay authoritative in this page even when storage cannot be written.
   const [viewPicks, setViewPicks] = useState<ReadonlyMap<string, PaneView>>(() => new Map());
-  return { lens, setLens, viewPicks, setViewPicks };
+  // the lens a pane had before its Browser lens, for the fall back when the session goes (lib/paneLens.ts)
+  const browserReturnViews = useRef(new Map<string, "chat" | "terminal">());
+  return { lens, setLens, viewPicks, setViewPicks, browserReturnViews };
 }
 
 export function usePaneLens({ settings, selectedPaneId, selectedMachineId, selectedPane, selectedAgent, terminalAttach, attachOn, notificationViewTarget, setNotificationViewTarget, lens, setLens, viewPicks, terminalPeek, setTerminalPeek }: {
@@ -97,6 +101,7 @@ export function usePaneLens({ settings, selectedPaneId, selectedMachineId, selec
   // its lens picked by hand) the pane is back on the lens it had. A shell has no conversation to
   // show (storedView), so its alert opens its own lens; until the snapshot says, it counts as an agent
   if (notificationView !== null && !(notificationView === "chat" && selectedPane !== null && selectedAgent === null)) view = notificationView;
+  if (view === "browser" && selectedMachineId !== "local") view = "terminal";
   // a press on an agent pane's tab or sidebar row starts its chat's first read before the pick renders
   // it, when the lens a pick gives it (asked, not kept) is the chat
   const pressPane = (machineId: string, paneId: string): void => {
@@ -105,7 +110,7 @@ export function usePaneLens({ settings, selectedPaneId, selectedMachineId, selec
   return { lenses, view, pressPane };
 }
 
-export function usePaneViewPicks({ setViewPicks, setNotificationViewTarget, setTerminalPeek, setLens, setAutoSelected, selectedPaneId, selectedMachineId }: {
+export function usePaneViewPicks({ browserReturnViews, setViewPicks, setNotificationViewTarget, setTerminalPeek, setLens, setAutoSelected, selectedPaneId, selectedMachineId }: {
   setViewPicks: Dispatch<SetStateAction<ReadonlyMap<string, PaneView>>>;
   setNotificationViewTarget: Dispatch<SetStateAction<NotificationTarget | null>>;
   setTerminalPeek: Dispatch<SetStateAction<TerminalPeek | null>>;
@@ -113,6 +118,8 @@ export function usePaneViewPicks({ setViewPicks, setNotificationViewTarget, setT
   setAutoSelected: Dispatch<SetStateAction<boolean>>;
   selectedPaneId: string | null;
   selectedMachineId: string;
+  /** the lens a pane had before its Browser lens, for the fall back when the session goes (lib/paneLens.ts) */
+  browserReturnViews: MutableRefObject<Map<string, "chat" | "terminal">>;
 }) {
   const pickView = useCallback((machineId: string, paneId: string, next: PaneView) => {
     const key = lensOwner(machineId, paneId);
@@ -127,7 +134,12 @@ export function usePaneViewPicks({ setViewPicks, setNotificationViewTarget, setT
   const setView = useCallback(
     (next: PaneView) => {
       setNotificationViewTarget(null); setTerminalPeek(null);
-      setLens((current) => ({ ...current, view: next }));
+      setLens((current) => {
+        if (next === "browser" && selectedPaneId !== null && (current.view === "chat" || current.view === "terminal")) {
+          browserReturnViews.current.set(paneStorageId(selectedMachineId, selectedPaneId), current.view);
+        }
+        return { ...current, view: next };
+      });
       setAutoSelected(false);
       if (selectedPaneId === null) return;
       pickView(selectedMachineId, selectedPaneId, next);

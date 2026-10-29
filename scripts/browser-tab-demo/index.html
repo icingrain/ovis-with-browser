@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Browser tab interaction demo</title>
+  <style>
+    :root { font: 16px/1.45 system-ui, sans-serif; color: #17212b; background: #f5f7fa; }
+    body { margin: 0; padding: 20px; }
+    main { max-width: 1000px; margin: auto; }
+    h1 { margin: 0 0 8px; }
+    .intro { margin: 0 0 16px; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr); gap: 16px; }
+    .card { padding: 16px; background: white; border: 1px solid #bac6d2; border-radius: 12px; }
+    .controls { display: grid; gap: 12px; }
+    .row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+    button, input, textarea, select { font: inherit; }
+    button, select, input[type=text], textarea { border: 1px solid #7b8998; border-radius: 7px; padding: 7px; background: white; }
+    button:hover, #hover:hover { background: #c7e9ff; }
+    #hover { padding: 12px; border: 1px dashed #4d7a9e; border-radius: 7px; }
+    #hover.active { background: #b5ecce; }
+    #drag-area { height: 100px; position: relative; border: 1px dashed #7b8998; border-radius: 7px; touch-action: none; }
+    #drag-box { position: absolute; top: 18px; left: 18px; width: 84px; height: 58px; display: grid; place-items: center; background: #e8d2fc; border: 1px solid #8955ab; border-radius: 7px; cursor: grab; user-select: none; }
+    #scroll-area { height: 110px; overflow: auto; border: 1px solid #7b8998; border-radius: 7px; padding: 8px; }
+    #scroll-content { height: 450px; background: linear-gradient(#dcf5ff, #d6e8b5); }
+    #log { height: 500px; overflow: auto; margin: 8px 0 0; padding: 10px 10px 10px 30px; background: #142436; color: #e6f5ff; font: 13px/1.5 ui-monospace, monospace; }
+    #context-menu { display: none; position: absolute; z-index: 2; padding: 8px 12px; color: white; background: #24456a; border-radius: 6px; pointer-events: none; }
+    #context-menu.open { display: block; }
+    .state { white-space: pre-wrap; font: 13px/1.45 ui-monospace, monospace; }
+    @media (max-width: 700px) { .columns { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Browser tab interaction demo</h1>
+    <p class="intro">Clock: <strong id="clock"></strong> · Every action updates the state and event log.</p>
+    <div class="columns">
+      <section class="card controls" aria-label="Interaction controls">
+        <div class="row"><button id="click">Click me</button><button id="double">Double click me</button><button id="right">Right click me</button><span id="hover">Hover here</span></div>
+        <div id="drag-area"><div id="drag-box">Drag me</div></div>
+        <label>Range slider <input id="slider" type="range" min="0" max="100" value="25"></label>
+        <div class="row"><label><input id="check" type="checkbox"> Check me</label><label><input type="radio" name="choice" value="one"> One</label><label><input type="radio" name="choice" value="two"> Two</label></div>
+        <label>Choose <select id="select"><option value="alpha">Alpha</option><option value="beta">Beta</option><option value="gamma">Gamma</option></select></label>
+        <div class="row"><button id="alert">Alert</button><button id="confirm">Confirm</button><button id="prompt">Prompt</button></div>
+        <label>Text <input id="text" type="text" placeholder="Type here"></label>
+        <label>Textarea <textarea id="textarea" rows="3" placeholder="Type here too"></textarea></label>
+        <div id="scroll-area"><div id="scroll-content">Wheel inside this box to scroll down.<br>More content is below.</div></div>
+        <a id="second-link" href="/second.html" target="_blank" rel="noopener">Open the second page</a>
+      </section>
+      <section class="card"><strong>Current state</strong><pre id="state" class="state"></pre><strong>Event log</strong><ol id="log"></ol></section>
+    </div>
+    <div id="context-menu">Custom context menu appeared</div>
+  </main>
+  <script>
+    const state = window.demoState = { clicks: 0, doubleClicks: 0, rightClicks: 0, hover: 0, dragMoves: 0, slider: 25, checked: false, radio: "", selected: "alpha", alertResult: "", confirmResult: null, promptResult: null, text: "", textarea: "", wheel: 0, keys: [], events: [] };
+    const $ = (id) => document.getElementById(id);
+    function record(name) {
+      state.events.push(name);
+      if (state.events.length > 100) state.events.shift();
+      const item = document.createElement("li"); item.textContent = name; $("log").prepend(item);
+      while ($("log").children.length > 50) $("log").lastChild.remove();
+      $("state").textContent = JSON.stringify({ ...state, events: undefined, keys: state.keys.slice(-8) }, null, 2);
+    }
+    $("click").addEventListener("click", () => { state.clicks++; record("click"); });
+    $("double").addEventListener("dblclick", () => { state.doubleClicks++; record("dblclick"); });
+    $("right").addEventListener("contextmenu", (event) => {
+      event.preventDefault(); state.rightClicks++; record("contextmenu");
+      const menu = $("context-menu"); menu.style.left = `${event.pageX}px`; menu.style.top = `${event.pageY}px`; menu.classList.add("open");
+    });
+    document.addEventListener("click", () => $("context-menu").classList.remove("open"));
+    $("hover").addEventListener("mouseover", () => { state.hover++; $("hover").classList.add("active"); record("mouseover"); });
+    $("hover").addEventListener("mouseout", () => $("hover").classList.remove("active"));
+    let dragging = false;
+    $("drag-box").addEventListener("mousedown", (event) => { dragging = true; event.preventDefault(); record("drag start"); });
+    document.addEventListener("mousemove", (event) => {
+      if (!dragging) return;
+      const area = $("drag-area").getBoundingClientRect();
+      $("drag-box").style.left = `${Math.max(0, Math.min(area.width - 84, event.clientX - area.left - 42))}px`;
+      $("drag-box").style.top = `${Math.max(0, Math.min(area.height - 58, event.clientY - area.top - 29))}px`;
+      state.dragMoves++; record("drag move");
+    });
+    document.addEventListener("mouseup", () => { if (dragging) { dragging = false; record("drag end"); } });
+    $("slider").addEventListener("input", (event) => { state.slider = Number(event.target.value); record(`slider ${state.slider}`); });
+    $("check").addEventListener("change", (event) => { state.checked = event.target.checked; record(`checkbox ${state.checked}`); });
+    document.querySelectorAll('input[name="choice"]').forEach((input) => input.addEventListener("change", (event) => { state.radio = event.target.value; record(`radio ${state.radio}`); }));
+    $("select").addEventListener("change", (event) => { state.selected = event.target.value; record(`select ${state.selected}`); });
+    $("alert").addEventListener("click", () => { alert("Demo alert"); state.alertResult = "acknowledged"; record("alert acknowledged"); });
+    $("confirm").addEventListener("click", () => { state.confirmResult = confirm("Demo confirm?"); record(`confirm ${state.confirmResult}`); });
+    $("prompt").addEventListener("click", () => { state.promptResult = prompt("Demo prompt?", "default"); record(`prompt ${state.promptResult}`); });
+    $("text").addEventListener("input", (event) => { state.text = event.target.value; record(`text ${state.text}`); });
+    $("textarea").addEventListener("input", (event) => { state.textarea = event.target.value; record(`textarea ${state.textarea}`); });
+    $("scroll-area").addEventListener("wheel", () => { state.wheel++; record("wheel"); });
+    document.addEventListener("keydown", (event) => {
+      const label = `${event.key} code=${event.code} shift=${event.shiftKey} ctrl=${event.ctrlKey} alt=${event.altKey} meta=${event.metaKey}`;
+      state.keys.push(label); record(`key ${label}`);
+    });
+    $("second-link").addEventListener("click", () => record("open second page"));
+    function clock() { $("clock").textContent = new Date().toLocaleTimeString(); }
+    clock(); setInterval(clock, 1000); record("ready");
+  </script>
+</body>
+</html>

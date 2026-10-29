@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { layoutTopology, paneContextPress, soloPane, splitPath, splitRatioAt } from "./paneCanvas.ts";
+import { layoutTopology, paneContextPress, paneFieldTarget, soloPane, splitPath, splitRatioAt } from "./paneCanvas.ts";
 import type { PaneLayoutSnapshot } from "../../shared/protocol.ts";
 
 const layout: PaneLayoutSnapshot = {
@@ -14,6 +14,16 @@ describe("native pane canvas", () => {
     expect(paneContextPress({button:0,ctrlKey:true}, false)).toBe(false);
     expect(paneContextPress({button:2,ctrlKey:false}, false)).toBe(true);
     expect(paneContextPress({button:0,ctrlKey:false}, true)).toBe(false);
+  });
+  it("lets an embedded Browser frame receive its own context press", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Element");
+    class FrameElement { closest(selector: string) { return selector === ".browser-frame" ? this : null; } }
+    Object.defineProperty(globalThis, "Element", { configurable: true, value: FrameElement });
+    try { expect(paneFieldTarget(new FrameElement() as unknown as EventTarget)).toBe(true); }
+    finally {
+      if (descriptor) Object.defineProperty(globalThis, "Element", descriptor);
+      else Reflect.deleteProperty(globalThis, "Element");
+    }
   });
   it("decodes nested paths without treating the preorder index as a path", () => {
     expect(splitPath("split_12_010")).toEqual([false,true,false]);

@@ -335,6 +335,22 @@ const BASE: Record<string, string> = {
   "Weekly": "每周",
   "Open terminal": "打开终端",
   "Sign in to {agent}": "登录 {agent}",
+  "Browser": "浏览器",
+  "Choose option": "选择选项",
+  "Browser dialog": "浏览器对话框",
+  "Response": "输入内容",
+  "OK": "确定",
+  "Browser tab": "浏览器标签页",
+  "Browser unavailable": "浏览器不可用",
+  "Browser connection lost": "浏览器连接已断开",
+  "No browser tabs": "没有打开的浏览器标签页",
+  "Loading browser…": "正在加载浏览器…",
+  "Browser tab screenshot": "浏览器标签页截图",
+  "Take control": "接管控制",
+  "Controlling": "控制中",
+  "Release": "结束控制",
+  "Take control to show this tab": "要显示此标签页，请先接管控制",
+  "Take control to switch tabs": "要切换标签页，请先接管控制",
 };
 
 /** The parts ZH is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */
