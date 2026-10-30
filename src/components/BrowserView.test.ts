@@ -19,15 +19,20 @@ describe("BrowserView control handoff", () => {
   let renderer: ReactTestRenderer | undefined;
   let requests: { path: string; body: Record<string, unknown> }[];
   let foregroundTabId: string | undefined;
+  let coarsePointer: boolean;
+  let storedInputMode: string | null;
   beforeEach(() => {
     requests = [];
     foregroundTabId = undefined;
+    coarsePointer = false;
+    storedInputMode = null;
     FakeEventSource.instances = [];
     for (const key of ["window", "document", "navigator", "EventSource", "fetch", "getComputedStyle", "IS_REACT_ACT_ENVIRONMENT"])
       originals.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
     Object.defineProperty(globalThis, "window", { configurable: true, value: {
-      localStorage: { getItem: () => null }, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
+      localStorage: { getItem: () => storedInputMode, setItem: (_key: string, value: string) => { storedInputMode = value; } },
+      matchMedia: () => ({ matches: coarsePointer, addEventListener() {}, removeEventListener() {} }),
       addEventListener() {}, removeEventListener() {},
     } });
     Object.defineProperty(globalThis, "document", { configurable: true, value: {
@@ -100,6 +105,35 @@ describe("BrowserView control handoff", () => {
     expect(title()).toBe("One");
     await act(async () => { jest.advanceTimersByTime(5000); });
     expect(title()).toBe("One");
+  });
+
+  it("defaults to Trackpad for a coarse pointer and remembers a Direct choice", async () => {
+    coarsePointer = true;
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    const modes = renderer!.root.findByProps({ "aria-label": "Browser input mode" }).findAllByType("button");
+    expect(modes.map((button) => button.props["aria-pressed"])).toEqual([false, true]);
+    await act(async () => { modes[0]!.props.onClick(); });
+    expect(modes.map((button) => button.props["aria-pressed"])).toEqual([true, false]);
+    expect(storedInputMode).toBe("direct");
+  });
+
+  it("releases a locked mouse button before closing its stream on unmount", async () => {
+    coarsePointer = true;
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => {
+      FakeEventSource.instances[0]?.emit("ready", { stream_id: "stream-one" });
+      FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 });
+    });
+    const toolbar = renderer!.root.findByProps({ className: "browser-toolbar" });
+    await act(async () => { toolbar.findAllByType("button").find((button) => button.props.children === "Take control")!.props.onClick(); });
+    const controls = renderer!.root.findByProps({ className: "browser-trackpad-controls" });
+    await act(async () => { controls.findAllByType("button")[1]!.props.onClick(); });
+    expect(requests.some((request) => (request.body.event as { type?: string } | undefined)?.type === "mousePressed")).toBe(true);
+    await act(async () => { renderer!.unmount(); await new Promise<void>((resolve) => setImmediate(resolve)); });
+    const release = requests.findIndex((request) => (request.body.event as { type?: string } | undefined)?.type === "mouseReleased");
+    const controlOff = requests.findIndex((request) => request.path.endsWith("/control") && request.body.enabled === false);
+    expect(release).toBeGreaterThan(-1);
+    expect(controlOff).toBeGreaterThan(release);
   });
 
   it("does not enter control on wheel, swallows the first key, and releases on Escape", async () => {

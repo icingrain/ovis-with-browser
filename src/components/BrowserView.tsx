@@ -1,8 +1,9 @@
-import { useContext, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type WheelEvent } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Keyboard, LockKeyhole, MousePointer2, MousePointerClick } from "lucide-react";
 import type { BrowserTab } from "../../shared/protocol.ts";
 import { browserInputPoint, browserModifiers, browserMouseButton, browserVirtualKeyCode, browserWheelDelta, type BrowserMouseButton, type ScreencastSize } from "../lib/browserInput.ts";
+import { browserTouchpadStep, createTouchpadState, type TouchpadAction, type TouchpadEvent, type TouchpadState } from "../lib/browserTouchpad.ts";
 import { useT } from "../lib/i18n.ts";
 import { PanePresentedContext, PaneShownContext } from "../lib/paneSubmitContext.ts";
 import "./BrowserView.css";
@@ -13,6 +14,16 @@ type Frame = ScreencastSize & { src: string };
 type SelectOption = { value: string; label: string; disabled: boolean; selected: boolean; group: string | null };
 type SelectPopup = { options: SelectOption[]; x: number; y: number };
 type BrowserDialog = { type: "alert" | "confirm" | "prompt"; message: string; defaultPrompt: string };
+type BrowserInputMode = "direct" | "trackpad";
+const INPUT_MODE_KEY = "ovis:browser-input-mode";
+
+function savedInputMode(): BrowserInputMode {
+  try {
+    const value = window.localStorage.getItem(INPUT_MODE_KEY);
+    if (value === "direct" || value === "trackpad") return value;
+  } catch { /* private browsing may block storage */ }
+  return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? "trackpad" : "direct";
+}
 
 function BrowserTabPicker({ tabs, tabId, disabled, onChange }: { tabs: BrowserTab[]; tabId: string; disabled: boolean; onChange: (id: string) => void }) {
   const t = useT();
@@ -151,6 +162,12 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [dialog, setDialog] = useState<BrowserDialog | null>(null);
   const [promptText, setPromptText] = useState("");
+  const [inputMode, setInputMode] = useState<BrowserInputMode>(savedInputMode);
+  const touchpadRef = useRef<TouchpadState | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [dragLocked, setDragLocked] = useState(false);
+  const keyboardRef = useRef<HTMLTextAreaElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     lastFramedTab.current = "";
@@ -188,6 +205,9 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
     streamIdRef.current = "";
     controlledRef.current = false;
     pressedButton.current = "none";
+    touchpadRef.current = null;
+    setCursor(null);
+    setDragLocked(false);
     setControlled(false);
     setSelectPopup(null);
     setDialog(null);
@@ -206,6 +226,11 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
       if (!alive) return;
       const image = JSON.parse((event as MessageEvent).data) as { data: string; width?: number; height?: number; offsetTop?: number; pageScaleFactor?: number };
       setFrame({ src: `data:image/jpeg;base64,${image.data}`, width: image.width || 1, height: image.height || 1, offsetTop: image.offsetTop || 0, pageScaleFactor: image.pageScaleFactor || 1 });
+      const width = image.width || 1, height = image.height || 1;
+      touchpadRef.current = touchpadRef.current
+        ? browserTouchpadStep(touchpadRef.current, { kind: "resize", width, height }).state
+        : createTouchpadState(width, height);
+      setCursor({ x: touchpadRef.current.x, y: touchpadRef.current.y });
       lastFramedTab.current = tabId;
       setInactive(false);
       setStatus("");
@@ -252,6 +277,8 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
       setControlled(false);
       controlledRef.current = false;
       pressedButton.current = "none";
+      touchpadRef.current = null;
+      setDragLocked(false);
       if (idleTimer.current) clearTimeout(idleTimer.current);
       setFrame(null);
       setInactive(false);
@@ -276,13 +303,17 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
     };
     return () => {
       alive = false;
-      if (controlledRef.current && streamIdRef.current) void post("control", { stream_id: streamIdRef.current, enabled: false }).catch(() => {});
+      const id = streamIdRef.current;
+      if (controlledRef.current && id) {
+        releaseHeldInput();
+        void inputQueue.current.then(() => post("control", { stream_id: id, enabled: false })).catch(() => {})
+          .finally(() => source.close());
+      } else source.close();
       controlledRef.current = false;
       pressedButton.current = "none";
       if (idleTimer.current) clearTimeout(idleTimer.current);
       streamIdRef.current = "";
       if (timer) clearTimeout(timer);
-      source.close();
     };
   }, [paneId, tabId, presented, shown, hasSession, retry, t]);
 
@@ -292,6 +323,7 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
   };
   const releaseControl = async () => {
     const id = streamIdRef.current;
+    releaseHeldInput();
     controlledRef.current = false;
     pressedButton.current = "none";
     setControlled(false);
@@ -320,15 +352,84 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
     } catch { setStatus(t("Browser connection lost")); }
     finally { enteringRef.current = false; }
   };
-  const send = (event: Input) => {
+  const send = (event: Input, force = false) => {
     const id = streamIdRef.current;
-    if (!controlledRef.current || !id) return;
+    if ((!controlledRef.current && !force) || !id) return;
     resetIdle();
     inputQueue.current = inputQueue.current.then(() => {
-      if (streamIdRef.current !== id || !controlledRef.current) return;
+      if ((!force && streamIdRef.current !== id) || (!controlledRef.current && !force)) return;
       return post("input", { stream_id: id, event });
     }).catch(() => setStatus(t("Browser connection lost")));
   };
+  const applyTouchpadAction = (action: TouchpadAction) => {
+    if (action.kind === "move") {
+      send({ type: "mouseMoved", x: action.x, y: action.y, button: action.buttons ? "left" : "none", buttons: action.buttons });
+    } else if (action.kind === "wheel") {
+      send({ type: "mouseWheel", x: action.x, y: action.y, button: "none", buttons: 0, deltaX: action.deltaX, deltaY: action.deltaY });
+    } else if (action.kind === "click") {
+      if (!controlledRef.current) { void takeControl(); return; }
+      send({ type: "mouseMoved", x: action.x, y: action.y, button: "none", buttons: 0 });
+      send({ type: "mousePressed", x: action.x, y: action.y, button: action.button, buttons: action.button === "left" ? 1 : 2, clickCount: 1 });
+      send({ type: "mouseReleased", x: action.x, y: action.y, button: action.button, buttons: 0, clickCount: 1 });
+    } else {
+      send({ type: action.kind === "press" ? "mousePressed" : "mouseReleased", x: action.x, y: action.y,
+        button: action.button, buttons: action.kind === "press" ? 1 : 0, clickCount: 1 }, action.kind === "release");
+    }
+  };
+  const stepTouchpad = (event: TouchpadEvent) => {
+    const state = touchpadRef.current;
+    if (!state) return;
+    const next = browserTouchpadStep(state, event);
+    touchpadRef.current = next.state;
+    setCursor({ x: next.state.x, y: next.state.y });
+    setDragLocked(next.state.locked);
+    for (const action of next.actions) applyTouchpadAction(action);
+  };
+  const releaseHeldInput = () => {
+    if (touchpadRef.current) stepTouchpad({ kind: "reset" });
+    const button = pressedButton.current;
+    if (button !== "none") {
+      pressedButton.current = "none";
+      const state = touchpadRef.current;
+      send({ type: "mouseReleased", x: state?.x ?? 0, y: state?.y ?? 0, button, buttons: 0, clickCount: 0 }, true);
+    }
+  };
+  const touchPointer = (event: ReactPointerEvent<HTMLDivElement>, kind: "down" | "move" | "up" | "cancel") => {
+    if (inputMode !== "trackpad" || event.pointerType !== "touch" || !frame) return;
+    event.preventDefault();
+    if (kind === "down") event.currentTarget.setPointerCapture(event.pointerId);
+    const width = imageRef.current?.getBoundingClientRect().width || frame.width;
+    stepTouchpad({ kind, id: event.pointerId, x: event.clientX, y: event.clientY,
+      at: event.timeStamp, scale: frame.width / width });
+  };
+  const setMode = (next: BrowserInputMode) => {
+    if (next === inputMode) return;
+    releaseHeldInput();
+    setInputMode(next);
+    try { window.localStorage.setItem(INPUT_MODE_KEY, next); } catch { /* storage can be unavailable */ }
+  };
+  const queueKeyboardText = (field: HTMLTextAreaElement) => {
+    const id = streamIdRef.current;
+    if (!id || !controlledRef.current) { field.value = ""; return; }
+    inputQueue.current = inputQueue.current.then(async () => {
+      if (streamIdRef.current !== id || !controlledRef.current) { field.value = ""; return; }
+      // Text waits only in the DOM field until this turn of the input queue; it never becomes
+      // React state, a draft, or a queued value.
+      const value = field.value;
+      field.value = "";
+      for (const char of value) {
+        if (char === "\n") {
+          await post("input", { stream_id: id, event: { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 } });
+          await post("input", { stream_id: id, event: { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 } });
+        } else await post("input", { stream_id: id, event: { type: "char", key: char, code: "", windowsVirtualKeyCode: 0, text: char } });
+      }
+    }).catch(() => setStatus(t("Browser connection lost")));
+  };
+  useEffect(() => {
+    const onBlur = () => releaseHeldInput();
+    window.addEventListener("blur", onBlur);
+    return () => window.removeEventListener("blur", onBlur);
+  }, [inputMode]);
   const toggleControl = () => controlledRef.current ? void releaseControl() : void takeControl();
   const chooseOption = async (index: number) => {
     const id = streamIdRef.current;
@@ -360,6 +461,10 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
   return <section className="browser-view" aria-label={t("Browser")} data-pane-content={presented && shown && frame ? presentationKey : undefined}>
     <div className="browser-toolbar">
       <BrowserTabPicker tabs={tabs} tabId={tabId} onChange={setTabId} disabled={tabs.length === 0 || (inactive || backgroundUnavailable) && !controlled} />
+      <div className="segmented browser-input-modes" role="group" aria-label={t("Browser input mode")}>
+        <button type="button" aria-pressed={inputMode === "direct"} onClick={() => setMode("direct")}>{t("Direct")}</button>
+        <button type="button" aria-pressed={inputMode === "trackpad"} onClick={() => setMode("trackpad")}>{t("Trackpad")}</button>
+      </div>
       {controlled && <span className="browser-control-label" role="status">{t("Controlling")}</span>}
       <button type="button" className="btn" aria-pressed={controlled} disabled={!streamId} onClick={toggleControl}>{controlled ? t("Release") : t("Take control")}</button>
     </div>
@@ -367,9 +472,15 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
     {status && <div className="browser-status" role="status"><span>{status}</span>{disconnected && hasSession && tabId && <button type="button" className="btn" onClick={() => { failures.current = 0; setRetry((current) => current + 1); }}>{t("Reconnect")}</button>}</div>}
     {!tabId && !status && <p className="browser-status">{t("No browser tabs")}</p>}
     {tabId && !frame && !status && <p className="browser-status">{t("Loading browser…")}</p>}
-    {frame && <div className={`browser-frame${controlled ? " is-controlling" : ""}`}>
-      <img src={frame.src} alt={t("Browser tab screenshot")} tabIndex={0} draggable={false}
+    {frame && <div className={`browser-frame${controlled ? " is-controlling" : ""}${inputMode === "trackpad" ? " is-trackpad" : ""}`}
+      onPointerDown={(event) => touchPointer(event, "down")}
+      onPointerMove={(event) => touchPointer(event, "move")}
+      onPointerUp={(event) => touchPointer(event, "up")}
+      onPointerCancel={(event) => touchPointer(event, "cancel")}>
+      <div className="browser-image-wrap">
+      <img ref={imageRef} src={frame.src} alt={t("Browser tab screenshot")} tabIndex={0} draggable={false}
         onMouseDown={(event) => {
+          if (inputMode === "trackpad") return;
           event.preventDefault();
           event.currentTarget.focus();
           if (!controlledRef.current) { void takeControl(); return; }
@@ -382,15 +493,18 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
           send({ type: "mousePressed", ...pos, button, buttons: event.buttons, clickCount: Math.max(1, Math.min(event.detail, 2)), modifiers: browserModifiers(event) });
         }}
         onMouseMove={(event) => {
+          if (inputMode === "trackpad") return;
           if (!controlledRef.current) return;
           send({ type: "mouseMoved", ...point(event), button: pressedButton.current, buttons: event.buttons, modifiers: browserModifiers(event) });
         }}
         onMouseUp={(event) => {
+          if (inputMode === "trackpad") return;
           if (!controlledRef.current || pressedButton.current === "none") return;
           send({ type: "mouseReleased", ...point(event), button: pressedButton.current, buttons: event.buttons, clickCount: Math.max(1, Math.min(event.detail, 2)), modifiers: browserModifiers(event) });
           pressedButton.current = "none";
         }}
         onMouseLeave={(event) => {
+          if (inputMode === "trackpad") return;
           if (pressedButton.current === "none") return;
           send({ type: "mouseReleased", ...point(event), button: pressedButton.current, buttons: 0, clickCount: 0, modifiers: browserModifiers(event) });
           pressedButton.current = "none";
@@ -416,6 +530,35 @@ export function BrowserView({ paneId, presentationKey, onSessionGone }: Props) {
           if (!controlledRef.current || event.key === "Escape") return;
           event.preventDefault();
           send(keyInput(event, "keyUp"));
+        }} />
+      {inputMode === "trackpad" && cursor && <span className="browser-trackpad-cursor" aria-hidden="true"
+        style={{ left: `${cursor.x / frame.width * 100}%`, top: `${(cursor.y + frame.offsetTop) / frame.height * 100}%` }}><MousePointer2 /></span>}
+      </div>
+    </div>}
+    {frame && inputMode === "trackpad" && <div className="browser-trackpad-controls">
+      <button type="button" className="btn" onClick={() => {
+        const state = touchpadRef.current;
+        if (state) applyTouchpadAction({ kind: "click", button: "right", x: state.x, y: state.y });
+      }}><MousePointerClick aria-hidden="true" />{t("Right click")}</button>
+      <button type="button" className="btn" aria-pressed={dragLocked} onClick={() => {
+        if (!controlledRef.current) { void takeControl().then(() => { if (controlledRef.current) stepTouchpad({ kind: "lock", enabled: true }); }); return; }
+        stepTouchpad({ kind: "lock", enabled: !touchpadRef.current?.locked });
+      }}><LockKeyhole aria-hidden="true" />{t("Drag lock")}</button>
+      <button type="button" className="btn" onClick={() => {
+        keyboardRef.current?.focus();
+        if (!controlledRef.current) void takeControl();
+      }}><Keyboard aria-hidden="true" />{t("Keyboard")}</button>
+      <textarea ref={keyboardRef} className="browser-keyboard-input" aria-label={t("Browser keyboard")} autoComplete="off" autoCapitalize="none" spellCheck={false}
+        onInput={(event) => {
+          queueKeyboardText(event.currentTarget);
+        }}
+        onKeyDown={(event) => {
+          if (!["Backspace", "Enter", "Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+          event.preventDefault();
+          const code = event.code || event.key;
+          const windowsVirtualKeyCode = browserVirtualKeyCode(code, event.keyCode);
+          send({ type: "keyDown", key: event.key, code, windowsVirtualKeyCode });
+          send({ type: "keyUp", key: event.key, code, windowsVirtualKeyCode });
         }} />
     </div>}
     {selectPopup && createPortal(<div ref={menuRef} className="menu browser-select-menu" role="listbox" aria-label={t("Choose option")}
