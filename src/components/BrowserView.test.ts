@@ -18,11 +18,20 @@ describe("BrowserView control handoff", () => {
   const originals = new Map<string, PropertyDescriptor | undefined>();
   let renderer: ReactTestRenderer | undefined;
   let requests: { path: string; body: Record<string, unknown> }[];
+  let notifyInput: (() => void) | undefined;
+  let controlGate: Promise<void> | undefined;
+  const inputArrived = () => new Promise<void>((resolve) => { notifyInput = resolve; });
+  const inputs = () => requests.filter((request) => request.path.endsWith("/input")).flatMap((request) => {
+    const events = request.body.events;
+    return Array.isArray(events) ? events as { type: string; x: number; y: number }[] : [];
+  });
   let foregroundTabId: string | undefined;
   let coarsePointer: boolean;
   let storedInputMode: string | null;
   beforeEach(() => {
     requests = [];
+    notifyInput = undefined;
+    controlGate = undefined;
     foregroundTabId = undefined;
     coarsePointer = false;
     storedInputMode = null;
@@ -37,6 +46,7 @@ describe("BrowserView control handoff", () => {
     } });
     Object.defineProperty(globalThis, "document", { configurable: true, value: {
       documentElement: { dataset: {}, style: { setProperty() {}, removeProperty() {} } }, querySelector: () => null,
+      addEventListener() {}, removeEventListener() {},
     } });
     Object.defineProperty(globalThis, "getComputedStyle", { configurable: true, value: () => ({ getPropertyValue: () => "" }) });
     Object.defineProperty(globalThis, "navigator", { configurable: true, value: { languages: ["en-US"] } });
@@ -46,6 +56,8 @@ describe("BrowserView control handoff", () => {
         { id: "one", title: "One", url: "about:blank" }, { id: "two", title: "Two", url: "about:blank" },
       ] });
       requests.push({ path: url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+      if (url.endsWith("/input")) { notifyInput?.(); notifyInput = undefined; }
+      if (url.endsWith("/control") && requests.at(-1)?.body.stream_id === "two" && requests.at(-1)?.body.enabled === true && controlGate) await controlGate;
       return Response.json({ ok: true });
     } });
   });
@@ -78,11 +90,12 @@ describe("BrowserView control handoff", () => {
     expect(requests.map((request) => request.path.split("/").at(-1))).toEqual(["control"]);
     expect(requests[0]?.body).toMatchObject({ stream_id: "stream-one", enabled: true });
     await act(async () => {
+      const arrival = inputArrived();
       renderer!.root.findByType("img").props.onMouseDown(pointer);
       renderer!.root.findByType("img").props.onMouseUp({ ...pointer, buttons: 0 });
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await arrival;
     });
-    const input = requests.filter((request) => request.path.endsWith("/input")).map((request) => request.body.event as { type: string; x: number; y: number });
+    const input = inputs();
     expect(input.map((event) => event.type)).toEqual(["mouseMoved", "mousePressed", "mouseReleased"]);
     expect(input[1]).toMatchObject({ x: 200, y: 100 });
     expect(renderer!.root.findAllByType("select")).toHaveLength(0);
@@ -92,6 +105,89 @@ describe("BrowserView control handoff", () => {
     await act(async () => { picker.parent!.props.onChange("two"); });
     expect(FakeEventSource.instances.at(-1)?.url).toContain("tab_id=two");
     expect(renderer!.root.findAllByProps({ "aria-pressed": false }).length).toBeGreaterThan(0);
+  });
+
+  it("keeps an explicitly selected inactive tab and offers return to the last visible tab", async () => {
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    await act(async () => { picker.parent!.props.onChange("two"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "two" }); FakeEventSource.instances.at(-1)?.emit("inactive", {}); });
+    expect(picker.findByProps({ className: "browser-tab-title" }).children.join("")).toBe("Two");
+    expect(picker.findByProps({ role: "combobox" }).props.disabled).toBe(false);
+    const card = renderer!.root.findByProps({ className: "browser-background-card" });
+    const buttons = card.findAllByType("button");
+    expect(buttons.map((button) => button.children.join(""))).toEqual(["Show this tab", "Back to One"]);
+    await act(async () => { buttons[1]!.props.onClick(); });
+    expect(picker.findByProps({ className: "browser-tab-title" }).children.join("")).toBe("One");
+  });
+
+  it("keeps the background overlay even if Chrome sends frames for a hidden tab", async () => {
+    foregroundTabId = "one";
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    await act(async () => { picker.parent!.props.onChange("two"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "two" }); FakeEventSource.instances.at(-1)?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    expect(picker.findByProps({ role: "combobox" }).props.disabled).toBe(false);
+    expect(renderer!.root.findByProps({ className: "browser-background-card" }).findAllByType("button")[1]?.children.join("")).toBe("Back to One");
+  });
+
+  it("shows an inactive tab only after the explicit show action", async () => {
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    await act(async () => { picker.parent!.props.onChange("two"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "two" }); FakeEventSource.instances.at(-1)?.emit("inactive", {}); });
+    expect(requests.filter((request) => request.path.endsWith("/control"))).toHaveLength(0);
+    await act(async () => { renderer!.root.findByProps({ className: "browser-background-card" }).findAllByType("button")[0]!.props.onClick(); });
+    expect(requests.at(-1)?.body).toMatchObject({ stream_id: "two", enabled: true, show_tab: true });
+    expect(renderer!.root.findAllByProps({ className: "browser-background-card" })).toHaveLength(0);
+  });
+
+  it("keeps control when choosing another tab", async () => {
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    await act(async () => { renderer!.root.findByProps({ className: "btn browser-control-button" }).props.onClick(); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    await act(async () => { picker.parent!.props.onChange("two"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "two" }); });
+    expect(requests.some((request) => request.path.endsWith("/control") && request.body.stream_id === "two" && request.body.enabled === true)).toBe(true);
+  });
+
+  it("keeps a pending control request across a quick second tab choice", async () => {
+    let release = () => {};
+    controlGate = new Promise<void>((resolve) => { release = resolve; });
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    await act(async () => { renderer!.root.findByProps({ className: "btn browser-control-button" }).props.onClick(); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    await act(async () => { picker.parent!.props.onChange("two"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "two" }); });
+    await act(async () => { picker.parent!.props.onChange("one"); });
+    await act(async () => { FakeEventSource.instances.at(-1)?.emit("ready", { stream_id: "one-again" }); });
+    expect(requests.some((request) => request.body.stream_id === "one-again" && request.body.enabled === true && request.body.show_tab === true)).toBe(true);
+    release();
+  });
+
+  it("falls back from an initially unavailable tab before any user choice", async () => {
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("inactive", {}); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    expect(picker.findByProps({ className: "browser-tab-title" }).children.join("")).toBe("Two");
+    expect(picker.findByProps({ role: "combobox" }).props.disabled).toBe(false);
+  });
+
+  it("does not fall back after the initial tab has already framed", async () => {
+    await act(async () => { renderer = create(createElement(SettingsProvider, null, createElement(BrowserView, { paneId: "test-pane", onSessionGone() {} }))); });
+    await act(async () => { FakeEventSource.instances[0]?.emit("ready", { stream_id: "one" }); FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 }); });
+    foregroundTabId = "two";
+    await act(async () => { FakeEventSource.instances[0]?.emit("inactive", {}); });
+    const picker = renderer!.root.findByProps({ className: "browser-tab-picker" });
+    expect(picker.findByProps({ className: "browser-tab-title" }).children.join("")).toBe("One");
+    expect(picker.findByProps({ role: "combobox" }).props.disabled).toBe(false);
+    const card = renderer!.root.findByProps({ className: "browser-background-card" });
+    expect(card.findAllByType("button")[1]?.children.join("")).toBe("Back to Two");
   });
 
   it("opens the visible tab despite list order and keeps a user choice on refresh", async () => {
@@ -125,12 +221,12 @@ describe("BrowserView control handoff", () => {
       FakeEventSource.instances[0]?.emit("frame", { data: "ZmFrZQ==", width: 800, height: 600 });
     });
     const toolbar = renderer!.root.findByProps({ className: "browser-toolbar" });
-    await act(async () => { toolbar.findAllByType("button").find((button) => button.props.children === "Take control")!.props.onClick(); });
+    await act(async () => { toolbar.findAllByType("button").find((button) => button.props["aria-label"] === "Take control")!.props.onClick(); });
     const controls = renderer!.root.findByProps({ className: "browser-trackpad-controls" });
-    await act(async () => { controls.findAllByType("button")[1]!.props.onClick(); });
-    expect(requests.some((request) => (request.body.event as { type?: string } | undefined)?.type === "mousePressed")).toBe(true);
+    await act(async () => { const arrival = inputArrived(); controls.findAllByType("button").find((button) => button.children.includes("Drag lock"))!.props.onClick(); await arrival; });
+    expect(inputs().some((event) => event.type === "mousePressed")).toBe(true);
     await act(async () => { renderer!.unmount(); await new Promise<void>((resolve) => setImmediate(resolve)); });
-    const release = requests.findIndex((request) => (request.body.event as { type?: string } | undefined)?.type === "mouseReleased");
+    const release = requests.findIndex((request) => Array.isArray(request.body.events) && request.body.events.some((event: { type?: string }) => event.type === "mouseReleased"));
     const controlOff = requests.findIndex((request) => request.path.endsWith("/control") && request.body.enabled === false);
     expect(release).toBeGreaterThan(-1);
     expect(controlOff).toBeGreaterThan(release);
@@ -153,7 +249,7 @@ describe("BrowserView control handoff", () => {
       image.props.onKeyUp(key);
       await new Promise<void>((resolve) => setImmediate(resolve));
     });
-    expect(requests.filter((request) => request.path.endsWith("/input")).map((request) => (request.body.event as { type: string }).type))
+    expect(inputs().map((event) => event.type))
       .toEqual(["keyDown", "char", "keyUp"]);
     await act(async () => { image.props.onKeyDown({ ...key, key: "Escape", code: "Escape", keyCode: 27 }); });
     expect(requests.at(-1)?.body).toMatchObject({ stream_id: "stream-one", enabled: false });

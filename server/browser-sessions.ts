@@ -142,6 +142,18 @@ export class BrowserSessions {
       let frameSeen = false;
       let frameTimer: ReturnType<typeof setTimeout> | undefined;
       let controller: ReadableStreamDefaultController<Uint8Array>;
+      let waiting = false;
+      let latestFrame: Uint8Array | undefined;
+      const qualityParam = Number(url.searchParams.get("quality"));
+      const widthParam = Number(url.searchParams.get("max_width"));
+      const heightParam = Number(url.searchParams.get("max_height"));
+      const quality = Number.isInteger(qualityParam) && qualityParam >= 1 && qualityParam <= 70 ? qualityParam : 70;
+      const dimensions = widthParam >= 320 && widthParam <= 1920 && heightParam >= 240 && heightParam <= 1920 &&
+        Number.isInteger(widthParam) && Number.isInteger(heightParam) ? { maxWidth: widthParam, maxHeight: heightParam } : {};
+      const emit = (event: string, data: unknown) => {
+        waiting = false;
+        controller.enqueue(encode(event, data));
+      };
       const encode = (event: string, data: unknown) => new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
       const close = (): void => {
         if (closed) return;
@@ -156,10 +168,10 @@ export class BrowserSessions {
       const stream = new ReadableStream<Uint8Array>({
         start: (sink) => {
           controller = sink;
-          sink.enqueue(encode("ready", { stream_id: id }));
           socket.addEventListener("open", () => {
+            waiting = false;
+            sink.enqueue(encode("ready", { stream_id: id }));
             send("Page.enable");
-            send("Emulation.setFocusEmulationEnabled", { enabled: true });
           });
           socket.addEventListener("message", (event) => {
             if (closed) return;
@@ -189,9 +201,9 @@ export class BrowserSessions {
               const current = this.streams.get(id);
               if (current) { current.selectObject = undefined; current.selectOptions = undefined; current.emit("select-close", {}); }
             }
-            if (frame.id === 2) {
-              // Some Chrome builds do not offer focus emulation; screencast still gets a chance.
-              send("Page.startScreencast", { format: "jpeg", quality: 70, everyNthFrame: 1 });
+            if (frame.id === 1) {
+              // Page.enable is enough to start a passive screencast, even with a dialog open.
+              send("Page.startScreencast", { format: "jpeg", quality, everyNthFrame: 1, ...dimensions });
               frameTimer = setTimeout(() => {
                 if (closed || frameSeen) return;
                 const current = this.streams.get(id);
@@ -202,7 +214,7 @@ export class BrowserSessions {
                     current.send("Page.bringToFront");
                   }
                 }
-                sink.enqueue(encode("inactive", {}));
+                emit("inactive", {});
               }, 2000);
               return;
             }
@@ -215,7 +227,7 @@ export class BrowserSessions {
                   current.send("Page.bringToFront");
                 }
               }
-              sink.enqueue(encode("inactive", {}));
+              emit("inactive", {});
               return;
             }
             if (frame.method !== "Page.screencastFrame" || typeof frame.params?.data !== "string") return;
@@ -223,28 +235,35 @@ export class BrowserSessions {
             if (frameTimer) clearTimeout(frameTimer);
             const current = this.streams.get(id);
             if (current) { current.inactive = false; current.frontRequested = false; }
-            if ((sink.desiredSize ?? 0) > 0) sink.enqueue(encode("frame", { data: frame.params.data, width: frame.params.metadata?.deviceWidth, height: frame.params.metadata?.deviceHeight, offsetTop: frame.params.metadata?.offsetTop, pageScaleFactor: frame.params.metadata?.pageScaleFactor }));
+            latestFrame = encode("frame", { data: frame.params.data, width: frame.params.metadata?.deviceWidth, height: frame.params.metadata?.deviceHeight, offsetTop: frame.params.metadata?.offsetTop, pageScaleFactor: frame.params.metadata?.pageScaleFactor });
+            if (waiting) { waiting = false; sink.enqueue(latestFrame); latestFrame = undefined; }
             if (typeof frame.params.sessionId === "number") send("Page.screencastFrameAck", { sessionId: frame.params.sessionId });
           });
           socket.addEventListener("close", close);
           socket.addEventListener("error", close);
         },
+        pull: (sink) => {
+          if (latestFrame) { sink.enqueue(latestFrame); latestFrame = undefined; }
+          else waiting = true;
+        },
         cancel: close,
-      });
-      this.streams.set(id, { paneId: session.pane_id, socket, controlled: false, inactive: false, frontRequested: false, close, send, call, emit: (event, data) => controller.enqueue(encode(event, data)) });
+      }, { highWaterMark: 0 });
+      this.streams.set(id, { paneId: session.pane_id, socket, controlled: false, inactive: false, frontRequested: false, close, send, call, emit });
       return new Response(stream, { headers: { "content-type": "text/event-stream", "cache-control": "no-store", "x-accel-buffering": "no" } });
     }
     if (["/api/pane/browser/control", "/api/pane/browser/input", "/api/pane/browser/select", "/api/pane/browser/dialog"].includes(pathname)) {
       if (request.method !== "POST") return badRequest("method_not_allowed", "use POST");
-      const body = await readJsonObject<{ stream_id?: unknown; enabled?: unknown; event?: unknown; index?: unknown; accept?: unknown; promptText?: unknown }>(request);
+      const body = await readJsonObject<{ stream_id?: unknown; enabled?: unknown; show_tab?: unknown; event?: unknown; events?: unknown; index?: unknown; accept?: unknown; promptText?: unknown }>(request);
       if (body instanceof Response) return body;
       const stream = typeof body.stream_id === "string" ? this.streams.get(body.stream_id) : undefined;
       if (!stream) return badRequest("invalid_stream", "browser stream is closed");
       if (pathname.endsWith("/control")) {
-        if (typeof body.enabled !== "boolean") return badRequest("invalid_control", "enabled must be boolean");
+        if (typeof body.enabled !== "boolean" || (body.show_tab !== undefined && typeof body.show_tab !== "boolean")) return badRequest("invalid_control", "enabled and show_tab must be boolean");
+        if (body.enabled && stream.socket.readyState !== WebSocket.OPEN) return badRequest("invalid_stream", "browser stream is not connected");
         stream.controlled = body.enabled;
+        if (stream.socket.readyState === WebSocket.OPEN) stream.send("Emulation.setFocusEmulationEnabled", { enabled: body.enabled });
         if (!body.enabled) { stream.selectObject = undefined; stream.selectOptions = undefined; }
-        if (stream.controlled && stream.inactive && !stream.frontRequested && stream.socket.readyState === WebSocket.OPEN) {
+        if (stream.controlled && (stream.inactive || body.show_tab === true) && !stream.frontRequested && stream.socket.readyState === WebSocket.OPEN) {
           stream.frontRequested = true;
           stream.send("Page.bringToFront");
         }
@@ -272,6 +291,17 @@ export class BrowserSessions {
         // Older CDP endpoints may omit javascriptDialogClosed. The object identity keeps a
         // subsequent dialog, opened before this command's reply, from being closed here.
         if (stream.dialog === dialog) { stream.dialog = undefined; stream.emit("dialog-close", {}); }
+        return jsonResponse({ ok: true });
+      }
+      if (body.events !== undefined) {
+        if (body.event !== undefined || !Array.isArray(body.events) || body.events.length < 1 || body.events.length > 64)
+          return badRequest("invalid_input", "events must be an array of 1 to 64 inputs");
+        for (const event of body.events) {
+          const single = new Request(request.url, { method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ stream_id: body.stream_id, event }) });
+          const response = await this.handle(single, url, pathname);
+          if (!response || !response.ok) return response ?? badRequest("invalid_input", "unsupported browser input");
+        }
         return jsonResponse({ ok: true });
       }
       const event = body.event;

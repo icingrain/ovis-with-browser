@@ -354,8 +354,9 @@ const BASE: Record<string, string> = {
   "Take control": "操作する",
   "Controlling": "操作中",
   "Release": "操作を終了",
-  "Take control to show this tab": "このタブを表示するには操作を有効にしてください",
-  "Take control to switch tabs": "タブを切り替えるには操作を有効にしてください",
+  "This tab is in the background in Chrome": "このタブはChromeのバックグラウンドにあります",
+  "Show this tab": "このタブを表示",
+  "Back to {title}": "{title}に戻る",
 };
 
 /** The parts JA is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

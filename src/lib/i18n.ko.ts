@@ -352,8 +352,9 @@ const BASE: Record<string, string> = {
   "Take control": "제어하기",
   "Controlling": "제어 중",
   "Release": "제어 끝내기",
-  "Take control to show this tab": "이 탭을 표시하려면 제어하기를 켜세요",
-  "Take control to switch tabs": "탭을 바꾸려면 제어하기를 켜세요",
+  "This tab is in the background in Chrome": "이 탭은 Chrome에서 백그라운드에 있어요",
+  "Show this tab": "이 탭 보기",
+  "Back to {title}": "{title}(으)로 돌아가기",
 };
 
 /** The parts KO is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

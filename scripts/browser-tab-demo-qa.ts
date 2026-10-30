@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { chromePath } from "./chrome-path.ts";
+import { checkBackgroundTab } from "./browser-tab-background-qa.ts";
 
 const origin = process.env["BROWSER_QA_UI"] ? new URL(process.env["BROWSER_QA_UI"]!).origin : undefined;
 const paneId = process.env["BROWSER_QA_PANE"];
@@ -195,7 +196,15 @@ try {
     await until(async () => Number((await read())["slider"]) >= 60, "slider value");
     assert.ok(Number((await read())["slider"]) >= 60);
   });
-  await step("text input", async () => { await click("text"); await ui.keyboard.type("ab"); await waitFor("text", "ab"); });
+  await step("text input", async () => {
+    const before = inputPosts.length;
+    await click("text"); await ui.keyboard.type("ab");
+    try { await waitFor("text", "ab"); }
+    catch (error) {
+      process.stderr.write(`Text trace: ${JSON.stringify({ input: inputPosts.slice(before), responses: inputResponses.slice(-10), state: await read(), active: await evaluate("document.activeElement?.id"), uiActive: await ui.evaluate(() => document.activeElement?.tagName), pageErrors })}\n`);
+      throw error;
+    }
+  });
   await step("Backspace", async () => { await ui.keyboard.press("Backspace"); await waitFor("text", "a"); });
   await step("select option", async () => {
     await click("select");
@@ -265,7 +274,8 @@ try {
     await picker.click();
     await list.getByRole("option", { name: /Browser tab second page/ }).click();
     await until(async () => (await picker.locator(".browser-tab-title").innerText()).includes("Browser tab second page"), "second browser tab");
-    await ui.getByRole("button", { name: "Take control" }).click();
+    await ui.getByRole("button", { name: "Release", exact: true }).waitFor();
+    await until(async () => await evaluate("document.visibilityState") === "hidden", "interaction tab hidden after controlled switch");
     await picker.click();
     await list.focus();
     const labels = await list.getByRole("option").allTextContents();
@@ -275,7 +285,9 @@ try {
     for (let index = 0; index < targetIndex; index++) await ui.keyboard.press("ArrowDown");
     await ui.keyboard.press("Enter");
     await until(async () => (await picker.locator(".browser-tab-title").innerText()).includes("Browser tab interaction demo"), "interaction browser tab");
+    await until(async () => await evaluate("document.visibilityState") === "visible", "interaction tab visible after controlled switch");
   });
+  await step("background tab recovery", () => checkBackgroundTab(ui, cdpUrl));
   process.stdout.write("Browser tab demo interactions passed against Chrome's DOM event log.\n");
 } catch (error) {
   process.stderr.write(`FAIL ${currentStep}: ${String(error)}\n`);

@@ -356,8 +356,9 @@ const BASE: Record<string, string> = {
   "Take control": "接管控制",
   "Controlling": "控制中",
   "Release": "结束控制",
-  "Take control to show this tab": "要显示此标签页，请先接管控制",
-  "Take control to switch tabs": "要切换标签页，请先接管控制",
+  "This tab is in the background in Chrome": "此标签页在 Chrome 后台",
+  "Show this tab": "显示此标签页",
+  "Back to {title}": "返回 {title}",
 };
 
 /** The parts ZH is made of; src/lib/i18n.test.ts fails when a key is in two parts, since a spread keeps only the last. */

@@ -13,6 +13,8 @@
 .browser-tab-option-text { display: flex; flex-direction: column; min-width: 0; }
 .browser-tab-option-title, .browser-tab-option-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browser-tab-option-url { color: var(--text-dim); font-size: var(--fs-xs); }
+.browser-tab-sheet-list { outline: none; }
+.browser-tab-sheet .browser-tab-option { min-height: var(--touch-target); padding: var(--space-2); }
 .browser-tab-option[data-active="true"] { background: var(--bg-hover); color: var(--text-strong); }
 .browser-status { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-4); color: var(--text-dim); }
 .browser-frame { min-height: 0; overflow: auto; text-align: center; flex: 1; }
@@ -24,6 +26,9 @@
 .browser-image-wrap { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
 .browser-trackpad-cursor { position: absolute; width: var(--icon-size); height: var(--icon-size); transform: translate(-25%, -10%); color: var(--text-strong); filter: drop-shadow(0 0 var(--hairline) var(--bg)); pointer-events: none; }
 .browser-trackpad-cursor svg { width: 100%; height: 100%; fill: var(--bg-panel); }
+.browser-cursor-feedback { position: absolute; inset: -6px; border: 2px solid currentColor; border-radius: 50%; animation: browser-feedback 350ms ease-out forwards; }
+@keyframes browser-feedback { from { transform: scale(.5); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .browser-cursor-feedback { animation: none; opacity: 0; } }
 .browser-trackpad-controls { display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: var(--hairline) solid var(--border); }
 .browser-trackpad-controls .btn { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--touch-target); }
 .browser-trackpad-controls .btn svg { width: var(--icon-size); height: var(--icon-size); }
@@ -34,3 +39,30 @@
 .browser-dialog { max-width: min(420px, 90vw); }
 .browser-dialog .modal-body p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .browser-dialog .modal-body input { width: 100%; }
+
+.browser-control-icon { display: none; }
+@media (max-width: 560px), (pointer: coarse) {
+  .browser-tab-label, .browser-control-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .browser-toolbar { gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+  .browser-tab-picker { flex: 1 1 100%; }
+  .browser-input-modes { order: 1; }
+  .browser-toolbar .browser-control-button { order: 2; margin-left: auto; height: var(--control-h); min-height: var(--control-h); }
+  .browser-control-text { display: none; }
+  .browser-control-icon { display: inline-flex; }
+  .browser-control-icon svg { width: var(--icon-size); height: var(--icon-size); }
+  .browser-control-button[aria-pressed="true"] { background: var(--bg-hover); color: var(--text-strong); }
+}
+.browser-frame { position: relative; }
+.browser-background-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--space-4); background: var(--scrim); }
+.browser-background-card { max-width: min(100%, 420px); padding: var(--space-5); border-radius: var(--radius-lg); background: var(--bg-panel); box-shadow: var(--shadow-pop); }
+.browser-background-card p { margin: 0 0 var(--space-4); }
+.browser-background-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+@media (pointer: coarse), (max-width: 640px) { .browser-background-actions .btn { min-height: var(--touch-target); } }

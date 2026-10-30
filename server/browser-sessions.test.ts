@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "./index.ts";
+import { BrowserSessions } from "./browser-sessions.ts";
 
 describe("browser registration", () => {
   let server: ReturnType<typeof createServer>;
@@ -33,6 +34,78 @@ describe("browser registration", () => {
     expect(body.session.registeredAt).toBeNumber();
   });
 
+  it("keeps the latest frame for a slow reader and acknowledges every frame", async () => {
+    let resolveAcks = () => {};
+    const allAcknowledged = new Promise<void>((resolve) => { resolveAcks = resolve; });
+    let acks = 0;
+    let options: Record<string, unknown> | undefined;
+    const cdp = Bun.serve({
+      port: 0, hostname: "127.0.0.1",
+      fetch(request, server) {
+        if (new URL(request.url).pathname === "/json/list") return Response.json([{ id: "tab", type: "page", title: "Page", url: "https://example.test/", webSocketDebuggerUrl: `ws://127.0.0.1:${server.port}/tab` }]);
+        return server.upgrade(request) ? undefined : new Response(null, { status: 400 });
+      },
+      websocket: { message(socket, raw) {
+        const message = JSON.parse(String(raw)) as { id: number; method: string; params?: Record<string, unknown> };
+        if (message.method === "Page.enable") socket.send(JSON.stringify({ id: message.id, result: {} }));
+        if (message.method === "Page.startScreencast") {
+          options = message.params;
+          for (let id = 1; id <= 3; id++) socket.send(JSON.stringify({ method: "Page.screencastFrame", params: { data: `frame${id}`, sessionId: id } }));
+        }
+        if (message.method === "Page.screencastFrameAck" && ++acks === 3) resolveAcks();
+      } },
+    });
+    const sessions = new BrowserSessions();
+    try {
+      const registerUrl = new URL("http://localhost/api/pane/browser/register");
+      await sessions.handle(new Request(registerUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pane_id: "slow", cdp_url: `http://127.0.0.1:${cdp.port}` }) }), registerUrl, registerUrl.pathname);
+      const url = new URL("http://localhost/api/pane/browser/stream?pane_id=slow&tab_id=tab&quality=45&max_width=1280&max_height=720");
+      const response = await sessions.handle(new Request(url), url, url.pathname);
+      const reader = response?.body?.getReader();
+      if (!reader) throw new Error("stream missing");
+      await reader.read();
+      await allAcknowledged;
+      const frame = new TextDecoder().decode((await reader.read()).value);
+      expect(frame).toContain("frame3");
+      expect(frame).not.toContain("frame1");
+      expect(options).toMatchObject({ quality: 45, maxWidth: 1280, maxHeight: 720 });
+      await reader.cancel();
+    } finally { sessions.stop(); cdp.stop(true); }
+  });
+
+  it("brings a framed tab forward only after an explicit show request", async () => {
+    let bringCount = 0;
+    let resolveBring = () => {};
+    const brought = new Promise<void>((resolve) => { resolveBring = resolve; });
+    const cdp = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch(request, instance) {
+      if (new URL(request.url).pathname === "/json/list") return Response.json([{ id: "tab", type: "page", title: "Page", url: "https://example.test/", webSocketDebuggerUrl: `ws://127.0.0.1:${instance.port}/tab` }]);
+      return instance.upgrade(request) ? undefined : new Response(null, { status: 400 });
+    }, websocket: { message(socket, raw) {
+      const message = JSON.parse(String(raw)) as { id: number; method: string };
+      if (message.method === "Page.enable") socket.send(JSON.stringify({ id: message.id, result: {} }));
+      if (message.method === "Page.startScreencast") socket.send(JSON.stringify({ method: "Page.screencastFrame", params: { data: "frame", sessionId: 1 } }));
+      if (message.method === "Page.bringToFront") { bringCount++; resolveBring(); }
+    } } });
+    const sessions = new BrowserSessions();
+    try {
+      const registerUrl = new URL("http://localhost/api/pane/browser/register");
+      await sessions.handle(new Request(registerUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pane_id: "pane", cdp_url: `http://127.0.0.1:${cdp.port}` }) }), registerUrl, registerUrl.pathname);
+      const streamUrl = new URL("http://localhost/api/pane/browser/stream?pane_id=pane&tab_id=tab");
+      const response = await sessions.handle(new Request(streamUrl), streamUrl, streamUrl.pathname);
+      const reader = response?.body?.getReader(); if (!reader) throw new Error("stream missing");
+      const ready = new TextDecoder().decode((await reader.read()).value);
+      const match = /"stream_id":"([^"]+)"/.exec(ready); if (!match) throw new Error("stream id missing");
+      await reader.read();
+      expect(bringCount).toBe(0);
+      const controlUrl = new URL("http://localhost/api/pane/browser/control");
+      const control = await sessions.handle(new Request(controlUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ stream_id: match[1], enabled: true, show_tab: true }) }), controlUrl, controlUrl.pathname);
+      expect(control?.status).toBe(200);
+      await brought;
+      expect(bringCount).toBe(1);
+      await reader.cancel();
+    } finally { sessions.stop(); cdp.stop(true); }
+  });
+
   it("streams a CDP frame and gates input until Take control", async () => {
     const commands: string[] = [];
     const received: { method: string; params?: Record<string, unknown> }[] = [];
@@ -40,6 +113,8 @@ describe("browser registration", () => {
     const firstSix = new Promise<void>((resolve) => { receivedSix = resolve; });
     let receivedFifteen: (() => void) | undefined;
     const firstFifteen = new Promise<void>((resolve) => { receivedFifteen = resolve; });
+    let receivedEighteen: (() => void) | undefined;
+    const firstEighteen = new Promise<void>((resolve) => { receivedEighteen = resolve; });
     const page = { pressed: false, clicked: false, inputValue: "", selected: "alpha", inputEvents: 0, changeEvents: 0, dialogAccepted: false, promptText: "" };
     const cdp = Bun.serve<{ tabId: string }>({
       port: 0, hostname: "127.0.0.1",
@@ -55,7 +130,7 @@ describe("browser registration", () => {
         message(socket, raw) {
           const message = JSON.parse(String(raw)) as { id: number; method: string; params?: Record<string, unknown> };
           commands.push(message.method);
-          if (message.method === "Emulation.setFocusEmulationEnabled") socket.send(JSON.stringify({ id: 2, result: {} }));
+          if (message.method === "Page.enable" || message.method === "Emulation.setFocusEmulationEnabled") socket.send(JSON.stringify({ id: message.id, result: {} }));
           if (message.method === "Page.startScreencast") {
             socket.send(JSON.stringify({ method: "Page.screencastFrame", params: { data: "ZmFrZS1qcGVn", sessionId: 1, metadata: { deviceWidth: 800, deviceHeight: 600, offsetTop: 0, pageScaleFactor: 1 } } }));
             socket.send(JSON.stringify({ method: "Page.screencastVisibilityChanged", params: { visible: false } }));
@@ -93,6 +168,7 @@ describe("browser registration", () => {
             received.push(message);
             if (received.length === 6) receivedSix?.();
             if (received.length === 15) receivedFifteen?.();
+            if (received.length === 18) receivedEighteen?.();
             if (message.params?.type === "mousePressed") page.pressed = true;
             if (message.params?.type === "mouseReleased" && page.pressed) { page.clicked = true; page.pressed = false; }
             if (message.params?.type === "char" && page.clicked) page.inputValue += message.params.text;
@@ -127,10 +203,12 @@ describe("browser registration", () => {
       expect(events).toContain("ZmFrZS1qcGVn");
       expect(commands).not.toContain("Page.bringToFront");
       expect(commands).not.toContain("Target.activateTarget");
-      expect(commands.filter((command) => command !== "Runtime.evaluate").slice(0, 3)).toEqual(["Page.enable", "Emulation.setFocusEmulationEnabled", "Page.startScreencast"]);
+      expect(commands.filter((command) => command !== "Runtime.evaluate").slice(0, 2)).toEqual(["Page.enable", "Page.startScreencast"]);
+      expect(commands).not.toContain("Emulation.setFocusEmulationEnabled");
       const event = { type: "mousePressed", x: 10, y: 20, button: "left" };
       const post = (path: string, body: object) => fetch(`${base}/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       expect((await post("input", { stream_id: id, event })).status).toBe(403);
+      expect((await post("input", { stream_id: id, events: [event] })).status).toBe(403);
       expect((await post("control", { stream_id: id, enabled: true })).status).toBe(200);
       expect(commands).toContain("Page.bringToFront");
       expect((await post("input", { stream_id: id, event: { type: "mouseMoved", x: 10, y: 20, button: "none" } })).status).toBe(200);
@@ -154,6 +232,16 @@ describe("browser registration", () => {
       expect((await post("input", { stream_id: id, event: { type: "mouseWheel", x: 60, y: 70, button: "none", buttons: 0, deltaX: 0, deltaY: 120 } })).status).toBe(200);
       expect((await post("input", { stream_id: id, event: { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, modifiers: 10 } })).status).toBe(200);
       await firstFifteen;
+      const batch = [
+        { type: "mouseMoved", x: 75, y: 50, button: "none" },
+        { type: "mousePressed", x: 75, y: 50, button: "right" },
+        { type: "mouseReleased", x: 75, y: 50, button: "right" },
+      ];
+      expect((await post("input", { stream_id: "wrong", events: batch })).status).toBe(400);
+      expect((await post("input", { stream_id: id, events: [] })).status).toBe(400);
+      expect((await post("input", { stream_id: id, events: batch })).status).toBe(200);
+      await firstEighteen;
+      expect(received.slice(15).map((message) => message.params?.type)).toEqual(batch.map((entry) => entry.type));
       expect(received).toContainEqual(expect.objectContaining({ method: "Input.dispatchMouseEvent", params: expect.objectContaining({ button: "right", buttons: 2 }) }));
       expect(received).toContainEqual(expect.objectContaining({ method: "Input.dispatchMouseEvent", params: expect.objectContaining({ clickCount: 2 }) }));
       expect(received).toContainEqual(expect.objectContaining({ method: "Input.dispatchMouseEvent", params: expect.objectContaining({ type: "mouseMoved", buttons: 1 }) }));
@@ -164,10 +252,12 @@ describe("browser registration", () => {
       expect((await post("select", { stream_id: id, index: 1 })).status).toBe(403);
       expect((await post("dialog", { stream_id: id, accept: true })).status).toBe(403);
       expect((await post("control", { stream_id: id, enabled: true })).status).toBe(200);
-      expect((await post("input", { stream_id: id, event: { type: "mousePressed", x: 111, y: 20, button: "left" } })).status).toBe(200);
+      expect((await post("input", { stream_id: id, events: [
+        { type: "mousePressed", x: 111, y: 20, button: "left" },
+        { type: "mouseReleased", x: 111, y: 20, button: "left" },
+      ] })).status).toBe(200);
       await readThrough("event: select\n");
       expect(events).toContain('"group":"Group"');
-      expect((await post("input", { stream_id: id, event: { type: "mouseReleased", x: 111, y: 20, button: "left" } })).status).toBe(200);
       expect(received.some((message) => message.params?.x === 111 && message.params?.type === "mousePressed")).toBe(false);
       expect((await post("select", { stream_id: "wrong", index: 1 })).status).toBe(400);
       expect((await post("select", { stream_id: id, index: 3 })).status).toBe(400);

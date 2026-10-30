@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium, type Browser, type CDPSession, type Page } from "playwright-core";
 import { chromePath } from "./chrome-path.ts";
+import { checkBackgroundTab } from "./browser-tab-background-qa.ts";
 
 const origin = process.env["BROWSER_QA_UI"] ? new URL(process.env["BROWSER_QA_UI"]!).origin : undefined;
 const paneId = process.env["BROWSER_QA_PANE"];
@@ -81,9 +82,66 @@ try {
   await image.waitFor();
   assert.equal(await ui.evaluate(() => matchMedia("(pointer: coarse)").matches), true, "touch context must emulate a coarse pointer");
   assert.equal(await ui.getByRole("button", { name: "Trackpad" }).getAttribute("aria-pressed"), "true");
+  await step("header browser switch fits phone widths", async () => {
+    for (const width of [390, 360]) {
+      await ui.setViewportSize({ width, height: 844 });
+      const button = ui.locator('.app-header .view-switch button[title="Browser"]');
+      await button.waitFor({ state: "visible" });
+      const bounds = await button.boundingBox();
+      assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, `Browser button clipped at ${width}px`);
+      const geometry = await button.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        let clipped = false;
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          const style = getComputedStyle(parent);
+          const bounds = parent.getBoundingClientRect();
+          if (["hidden", "clip", "auto", "scroll"].includes(style.overflowX) && (rect.left < bounds.left || rect.right > bounds.right)) clipped = true;
+          if (["hidden", "clip", "auto", "scroll"].includes(style.overflowY) && (rect.top < bounds.top || rect.bottom > bounds.bottom)) clipped = true;
+        }
+        return { clipped, hit: element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)) };
+      });
+      assert.equal(geometry.clipped, false, `Browser button clipped by a container at ${width}px`);
+      assert.equal(geometry.hit, true, `Browser button obstructed at ${width}px`);
+    }
+    await ui.setViewportSize({ width: 390, height: 844 });
+  });
   const uiCdp: CDPSession = await context.newCDPSession(ui);
   const dispatch = (type: "touchStart" | "touchMove" | "touchEnd", touchPoints: TouchPoint[]) =>
     uiCdp.send("Input.dispatchTouchEvent", { type, touchPoints });
+  await step("tab picker uses a dismissible phone sheet", async () => {
+    const picker = ui.getByRole("combobox", { name: "Browser tab" });
+    const sheet = ui.getByRole("dialog", { name: "Browser tab" });
+    const list = sheet.getByRole("listbox", { name: "Browser tab" });
+    const show = async () => { await picker.click(); await list.waitFor(); };
+    await show();
+    await until(async () => {
+      const bounds = await sheet.boundingBox();
+      return !!bounds && Math.abs(bounds.y + bounds.height - 844) < 2;
+    }, "sheet reaches bottom edge");
+    assert.ok(await list.getByRole("option").count() >= 2, "sheet lists browser tabs");
+    await list.focus();
+    await ui.keyboard.press("ArrowDown");
+    await ui.keyboard.press("Tab");
+    assert.equal(await sheet.getByRole("button", { name: "Cancel" }).evaluate((button) => document.activeElement === button), true, "Tab reaches Cancel");
+    await ui.keyboard.press("Shift+Tab");
+    assert.equal(await list.evaluate((element) => document.activeElement === element), true, "Shift+Tab returns to the options");
+    await ui.goBack();
+    await sheet.waitFor({ state: "hidden" });
+    assert.equal(await picker.evaluate((button) => document.activeElement === button), true, "Back restores picker focus");
+    await show();
+    await ui.mouse.click(8, 8);
+    await sheet.waitFor({ state: "hidden" });
+    assert.equal(await picker.evaluate((button) => document.activeElement === button), true, "outside tap restores picker focus");
+    await show();
+    const grip = await sheet.locator(".row-sheet-grip").boundingBox();
+    if (!grip) throw new Error("Sheet grip is not visible");
+    const at = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2, id: 1 };
+    await dispatch("touchStart", [at]);
+    await dispatch("touchMove", [{ ...at, y: at.y + 180 }]);
+    await dispatch("touchEnd", []);
+    await sheet.waitFor({ state: "hidden" });
+    assert.equal(await picker.evaluate((button) => document.activeElement === button), true, "swipe restores picker focus");
+  });
   const box = async () => {
     const bounds = await image.boundingBox();
     if (!bounds) throw new Error("Browser screenshot is not visible");
@@ -128,7 +186,8 @@ try {
       const scale = Math.min(1, 70 / Math.max(Math.abs(dx), Math.abs(dy)));
       await gesture(dx * scale, dy * scale);
     }
-    throw new Error(`Cursor did not reach ${id}`);
+    const pageBounds = await evaluate(`(() => { const r = document.getElementById(${JSON.stringify(id)}).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, viewportWidth: innerWidth, viewportHeight: innerHeight }; })()`);
+    throw new Error(`Cursor did not reach ${id}: ${JSON.stringify({ target, cursor: await cursor(), image: await box(), page: pageBounds })}`);
   };
 
   await step("first tap enters control", async () => {
@@ -191,6 +250,20 @@ try {
     await ui.keyboard.type("q");
     await until(async () => String((await read())["text"]).includes("q"), "keyboard text");
   });
+  await step("switch browser tabs in the phone sheet", async () => {
+    const picker = ui.getByRole("combobox", { name: "Browser tab" });
+    await picker.click();
+    const list = ui.getByRole("listbox", { name: "Browser tab" });
+    await list.getByRole("option", { name: /Browser tab second page/ }).click();
+    await until(async () => (await picker.locator(".browser-tab-title").innerText()).includes("Browser tab second page"), "second browser tab");
+    await ui.getByRole("button", { name: "Release", exact: true }).waitFor();
+    await until(async () => await evaluate("document.visibilityState") === "hidden", "interaction tab hidden after controlled switch");
+    await picker.click();
+    await list.getByRole("option", { name: /Browser tab interaction demo/ }).click();
+    await until(async () => (await picker.locator(".browser-tab-title").innerText()).includes("Browser tab interaction demo"), "interaction browser tab");
+    await until(async () => await evaluate("document.visibilityState") === "visible", "interaction tab visible after controlled switch");
+  });
+  await step("background tab recovery", () => checkBackgroundTab(ui, cdpUrl));
   process.stdout.write("Browser touchpad gestures passed against Chrome's DOM event log.\n");
 } catch (error) {
   process.stderr.write(`FAIL ${currentStep}: ${String(error)}\n`);
