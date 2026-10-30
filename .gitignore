@@ -38,3 +38,6 @@ app/www/
 *.jks
 *.keystore
 upload.properties
+
+# this fork's long-form notes on the Browser tab: kept locally, never committed
+docs/browser-tab-guide.md
