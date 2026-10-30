@@ -21,6 +21,18 @@ For everything else (install, agents, chat, terminal, push alerts, remote PCs) s
 - **Menus and dialogs that work.** Chrome's native `<select>` list and JavaScript `alert`, `confirm` and `prompt` cannot be screencast, so Ovis draws them and sends your answer back.
 - **Background tabs without surprises.** Chrome does not paint a hidden tab. Picking one shows a card with **Show this tab** (takes control and brings the tab forward) and **Back**. Looking at a tab never raises the Chrome window.
 
+## how it works
+
+<p align="center">
+  <img src="docs/media/browser-tab/flow.gif" alt="Animated diagram: the agent's Chrome is registered for a herdr pane; Ovis streams its screen to the phone as frames; the first tap takes control; moves and taps travel back through the Ovis server to Chrome; Esc or 60 seconds idle gives control back." width="640">
+</p>
+
+1. **Chrome stays where it is.** The agent's Chrome runs on your computer with a debugging port on loopback. Ovis never launches or closes it.
+2. **Register it for a pane.** Ovis keeps the Chrome's address for that herdr pane in memory and shows a Browser tab for it.
+3. **Frames go out.** The Ovis server asks Chrome for a screencast of one tab and sends each frame to the browser or phone that has the tab open. Phones get smaller, lower quality frames.
+4. **Input comes back.** Your clicks, moves, scrolls and keys go to the server and are replayed in Chrome. Pointer moves are coalesced, so only the latest one is sent while a request is in flight.
+5. **Control is explicit.** The view starts read-only. The first tap or key takes control, and is not sent to the page. Esc, the release button or 60 seconds without input give it back.
+
 ## use it
 
 You need herdr, [Bun](https://bun.sh) and a Chrome on the same computer as Ovis.
@@ -49,6 +61,42 @@ Then give a pane a Chrome to show:
 3. Open the pane in Ovis and pick **Browser**.
 
 `bun scripts/browser-tab-demo.ts --pane-id=<pane id>` opens a Chrome with an interaction test page and prints the register command, which is the quickest way to try it.
+
+## on a phone
+
+On a touch device the Browser tab opens in **Trackpad** mode: the page area is a touchpad, and a cursor shows where a tap will land. The **Direct** mode next to it sends the pointer as it is, for a mouse. The choice is remembered per device.
+
+**1. Take control and move.** Tap once to take control; that first tap is not sent to the page. Then drag one finger: the cursor follows, and hover effects work.
+
+<p align="center">
+  <img src="docs/media/browser-tab/guide-1-control-and-move.gif" alt="Phone screen: a tap switches control on, then one finger moves the cursor over the page" width="300">
+</p>
+
+**2. Click and right-click.** A tap clicks where the cursor is. A tap with two fingers right-clicks; the Right click button below does the same.
+
+<p align="center">
+  <img src="docs/media/browser-tab/guide-2-click-and-right-click.gif" alt="Phone screen: a tap clicks a button, a two-finger tap opens a context menu" width="300">
+</p>
+
+**3. Drag.** Tap, then touch again straight away and move to grab and drag. For a long or precise drag, turn **Drag lock** on, move, and turn it off to let go.
+
+<p align="center">
+  <img src="docs/media/browser-tab/guide-3-drag.gif" alt="Phone screen: a tap followed by a touch and move drags a box across the page; the Drag lock button is highlighted" width="300">
+</p>
+
+**4. Menus and scrolling.** A page's select list opens at the cursor and is tapped like any menu; JavaScript alert, confirm and prompt dialogs appear as dialogs. Two fingers moving up or down scroll the page and never take control.
+
+<p align="center">
+  <img src="docs/media/browser-tab/guide-4-menus-and-scroll.gif" alt="Phone screen: a select menu opens under the cursor, then two fingers scroll the page" width="300">
+</p>
+
+**5. Let go and switch tabs.** The X button (or Esc, or 60 seconds without input) gives control back. The tab picker rises from the bottom as a sheet; a tab Chrome keeps in the background shows a card with **Show this tab**, which takes control and brings it forward.
+
+<p align="center">
+  <img src="docs/media/browser-tab/guide-5-release-and-tabs.gif" alt="Phone screen: the X button releases control, then the tab picker opens as a bottom sheet" width="300">
+</p>
+
+The bar under the page has **Right click**, **Keyboard** (opens the phone keyboard) and **Drag lock**.
 
 ## limits
 
