@@ -12,7 +12,7 @@ const withHome = (run: (home: string) => void) => {
 describe("browser skill installer", () => {
   it("names each agent's skill folder under the directory the agent reads", () => {
     const targets = skillTargets("/h", { CODEX_HOME: "/c", XDG_CONFIG_HOME: "/x" });
-    expect(targets.map((target) => target.file)).toEqual(["/h/.claude/skills/ovis-browser/SKILL.md", "/c/skills/ovis-browser/SKILL.md", "/x/opencode/skills/ovis-browser/SKILL.md"]);
+    expect(targets.map((target) => target.file)).toEqual(["/h/.claude/skills/ovis-browser/SKILL.md", "/c/skills/ovis-browser/SKILL.md", "/x/opencode/skills/ovis-browser/SKILL.md", "/h/.agents/skills/ovis-browser/SKILL.md"]);
   });
 
   it("fills in the helper and puts the banner under the front matter", () => {

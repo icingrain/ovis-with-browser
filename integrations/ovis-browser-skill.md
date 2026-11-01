@@ -1,6 +1,6 @@
 ---
 name: ovis-browser
-description: Use when you need to open or drive a web page in a browser while running inside a herdr pane (HERDR_PANE_ID is set), so the person can watch and steer that same Chrome tab from the Browser tab in Ovis.
+description: Use whenever you need to open, test or drive a web page in a browser while running inside a herdr pane (HERDR_PANE_ID is set), instead of a built-in or extension browser tool, so the person can watch and steer that same Chrome tab from the Browser tab in Ovis.
 ---
 
 # Ovis browser
@@ -10,7 +10,8 @@ Ovis can show the Chrome you drive, live, in a Browser tab next to this pane's c
 ## When to use it
 
 - You are in a herdr pane (`echo $HERDR_PANE_ID` prints something) and you are about to use a browser: open a page, test a UI, click through a flow, take a screenshot.
-- Skip it when there is no `HERDR_PANE_ID`, or when you only need to fetch a page's text without a browser.
+- Use it instead of any built-in, extension or computer-use browser tool: those drive a browser Ovis cannot show.
+- Skip it when there is no `HERDR_PANE_ID`, when you only need to fetch a page's text without a browser, or when the person asked for their own signed-in browser.
 
 ## Steps
 
