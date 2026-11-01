@@ -6,3 +6,7 @@
 - On a touch device the Browser tab opens in a Trackpad mode: a cursor moved by one finger, tap to
   click, two-finger tap to right-click, tap and drag, drag lock, two-finger scroll and a keyboard
   button. Pointer moves are coalesced so the cursor keeps up on a slow link.
+- `scripts/ovis-browser.ts` launches a Chrome with its own profile and registers it for the herdr pane
+  it runs in, and `scripts/install-browser-skill.ts` (or the plugin action "Install the Browser tab
+  skill") writes an `ovis-browser` skill for Claude Code, Codex and OpenCode so their agents do it
+  on their own.

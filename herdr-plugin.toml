@@ -86,6 +86,22 @@ contexts = ["workspace"]
 command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/plugin.ps1", "status"]
 platforms = ["windows"]
 
+# Writes the "ovis-browser" skill into Claude Code, Codex and OpenCode so an agent starts its Chrome through
+# scripts/ovis-browser.ts, which registers it for its pane (Browser tab). It runs only when a person picks it.
+[[actions]]
+id = "install-browser-skill"
+title = "Install the Browser tab skill"
+contexts = ["workspace"]
+command = ["sh", "scripts/with-bun.sh", "scripts/install-browser-skill.ts", "--yes"]
+platforms = ["linux", "macos"]
+
+[[actions]]
+id = "install-browser-skill-windows"
+title = "Install the Browser tab skill"
+contexts = ["workspace"]
+command = ["bun", "scripts/install-browser-skill.ts", "--yes"]
+platforms = ["windows"]
+
 [[panes]]
 id = "phone"
 title = "Phone setup"

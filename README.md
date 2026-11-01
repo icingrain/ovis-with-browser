@@ -27,31 +27,51 @@ For everything else (install, agents, chat, terminal, push alerts, remote PCs) s
   <img src="docs/media/browser-tab/flow.gif" alt="Animated diagram: the agent's Chrome is registered for a herdr pane; Ovis streams its screen to the phone as frames; the first tap takes control; moves and taps travel back through the Ovis server to Chrome; Esc or 60 seconds idle gives control back." width="640">
 </p>
 
-1. **Chrome stays where it is.** The agent's Chrome runs on your computer with a debugging port on loopback. Ovis never launches or closes it.
-2. **Register it for a pane.** Ovis keeps the Chrome's address for that herdr pane in memory and shows a Browser tab for it.
-3. **Frames go out.** The Ovis server asks Chrome for a screencast of one tab and sends each frame to the browser or phone that has the tab open. Phones get smaller, lower quality frames.
+1. **Chrome runs on your computer.** The agent's Chrome has a debugging port on loopback. Ovis does not launch it: the agent starts it through the helper (see below) or you do.
+2. **Register it for a pane.** The Ovis server keeps the Chrome's address for that herdr pane in memory and shows a Browser tab for it. The server is Ovis's own, with one module added for this ([server/browser-sessions.ts](server/browser-sessions.ts)); there is no second server.
+3. **Frames go out.** The server asks Chrome for a screencast of one tab and sends each frame to the browser or phone that has the tab open. Phones get smaller, lower quality frames.
 4. **Input comes back.** Your clicks, moves, scrolls and keys go to the server and are replayed in Chrome. Pointer moves are coalesced, so only the latest one is sent while a request is in flight.
 5. **Control is explicit.** The view starts read-only. The first tap or key takes control, and is not sent to the page. Esc, the release button or 60 seconds without input give it back.
 
 ## use it
 
-You need herdr, [Bun](https://bun.sh) and a Chrome on the same computer as Ovis.
+You need herdr, [Bun](https://bun.sh) and a desktop Chrome on the same computer as Ovis. Headless Chrome is not supported yet.
 
 ```bash
 git clone https://github.com/icingrain/ovis-with-browser.git
 cd ovis-with-browser
 bun install
 bun run build
-HOST=$(tailscale ip -4) PORT=7317 bun run server   # open http://<that address>:7317
+bun run server        # http://127.0.0.1:7317; add HOST=$(tailscale ip -4) to open it from a phone
 ```
 
-Then give a pane a Chrome to show:
+### let the agent register its own Chrome (recommended)
+
+Install the skill once. It tells Claude Code, Codex and OpenCode to start their Chrome through `scripts/ovis-browser.ts`, which launches a Chrome with its own profile and registers it for the pane the agent runs in (`$HERDR_PANE_ID`).
+
+```bash
+bun scripts/install-browser-skill.ts          # shows what it would write, writes nothing
+bun scripts/install-browser-skill.ts --yes    # installs ovis-browser into each agent folder found
+bun scripts/install-browser-skill.ts --remove --yes
+```
+
+If you run Ovis as a herdr plugin, the same install is the plugin action **Install the Browser tab skill**. It writes `skills/ovis-browser/SKILL.md` under `~/.claude`, `~/.codex` and `~/.config/opencode`, only where that agent's folder exists (`--agent claude|codex|opencode` forces one), and only replaces files it wrote itself. Restart running agent sessions afterwards.
+
+From then on, an agent in a pane that needs a browser runs `ovis-browser start`, drives the printed `cdp_url`, and you open the pane's **Browser** tab. The helper reads `OVIS_URL` (default `http://127.0.0.1:7317`) and `OVIS_TOKEN` when the server asks for one.
+
+```bash
+bun scripts/ovis-browser.ts start --url https://example.com   # launch or reuse this pane's Chrome and register it
+bun scripts/ovis-browser.ts status
+bun scripts/ovis-browser.ts stop                               # unregister and close it
+```
+
+### or register one by hand
 
 1. Start Chrome with a debugging port on loopback:
    ```bash
    chrome --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/agent-chrome
    ```
-2. Register it for a pane (the pane IDs are the ones `herdr pane list` prints):
+2. Register it for a pane. Inside a pane the ID is `$HERDR_PANE_ID`; elsewhere `herdr pane list` prints them.
    ```bash
    curl -X POST 'http://127.0.0.1:7317/api/pane/browser/register' \
      -H 'content-type: application/json' \
@@ -100,7 +120,7 @@ The bar under the page has **Right click**, **Keyboard** (opens the phone keyboa
 
 ## limits
 
-- Chrome has to run on the same computer as the Ovis server; a pane on a remote PC has no Browser tab.
+- Chrome has to run on the same computer as the Ovis server, as a desktop (not headless) Chrome; a pane on a remote PC has no Browser tab.
 - Native date, color and file pickers, paste and IME composition are not relayed.
 - What you see is a stream: a page's reaction reaches the screen after the network round trip plus Chrome's capture and encode time. Phones receive smaller, lower quality frames to keep up.
 - The registered Chrome is fully controllable by anyone who can open Ovis, so the usual Ovis access rules (token, paired devices, Tailscale) are the protection. Register only a Chrome you are willing to share.
