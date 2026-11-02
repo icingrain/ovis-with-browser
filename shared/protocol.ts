@@ -1110,7 +1110,8 @@ export type { SessionHistoryAgent, SessionResumeSource, SessionHistoryRow, Sessi
 
 /** herdr's default socket, under XDG_CONFIG_HOME when set, as herdr itself resolves it. */
 export const HERDR_SOCKET_PATH = `${process.env["XDG_CONFIG_HOME"] || `${process.env["HOME"] ?? ""}/.config`}/herdr/herdr.sock`;
-export const DEFAULT_PORT = 7317;
+/** this fork serves on 7318, so it can run beside an Ovis install that keeps 7317 */
+export const DEFAULT_PORT = 7318;
 
 /** A pane's locally registered Chrome DevTools endpoint. The browser client never connects to it directly. */
 export interface BrowserSession {

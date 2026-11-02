@@ -6,7 +6,7 @@
  *   ovis-browser.ts status                 what is registered for the pane, and whether it answers
  *   ovis-browser.ts stop                   unregister and close the Chrome this script started
  *
- * The pane is $HERDR_PANE_ID (or --pane), the server is $OVIS_URL (default http://127.0.0.1:7317),
+ * The pane is $HERDR_PANE_ID (or --pane), the server is $OVIS_URL (default http://127.0.0.1:7318),
  * with $OVIS_TOKEN as a Bearer token when the server asks for one. The Chrome is $CHROME_PATH or the
  * first one found; it gets its own profile, never the one a person browses with.
  */
@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const DEFAULT_OVIS_URL = "http://127.0.0.1:7317";
+export const DEFAULT_OVIS_URL = "http://127.0.0.1:7318";
 
 export interface BrowserHelperOptions {
   command: "start" | "status" | "stop";

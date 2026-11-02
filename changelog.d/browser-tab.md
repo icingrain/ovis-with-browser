@@ -10,3 +10,5 @@
   it runs in, and `scripts/install-browser-skill.ts` (or the plugin action "Install the Browser tab
   skill") writes an `ovis-browser` skill for Claude Code and the shared agents folder so agents do
   it on their own.
+- This fork is the herdr plugin `icingrain.ovis-with-browser` and serves on port 7318 by default, so it
+  runs beside an `devswha.ovis` install (port 7317) without sharing its state.

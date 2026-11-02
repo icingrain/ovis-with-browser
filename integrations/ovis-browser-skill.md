@@ -40,4 +40,4 @@ Ovis can show the Chrome you drive, live, in a Browser tab next to this pane's c
 
 ## If the helper fails
 
-It needs Ovis running on this computer (default `http://127.0.0.1:7317`; set `OVIS_URL`, and `OVIS_TOKEN` when the server asks for one) and a Chrome (`CHROME_PATH` names one). If it cannot start, say so in one line and carry on with your usual browser; the work does not depend on Ovis.
+It needs Ovis running on this computer (default `http://127.0.0.1:7318`; set `OVIS_URL`, and `OVIS_TOKEN` when the server asks for one) and a Chrome (`CHROME_PATH` names one). If it cannot start, say so in one line and carry on with your usual browser; the work does not depend on Ovis.

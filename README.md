@@ -42,8 +42,10 @@ git clone https://github.com/icingrain/ovis-with-browser.git
 cd ovis-with-browser
 bun install
 bun run build
-bun run server        # http://127.0.0.1:7317; add HOST=$(tailscale ip -4) to open it from a phone
+bun run server        # http://127.0.0.1:7318; add HOST=$(tailscale ip -4) to open it from a phone
 ```
+
+This fork has its own plugin id, `icingrain.ovis-with-browser`, and serves on port **7318**, so it can run beside an Ovis install (`devswha.ovis`, port 7317) without touching its settings, pairing or state. The install scripts in this repository (`install.sh`, `install.ps1`) and the native Mac and Windows apps still install and manage upstream's Ovis, not this fork.
 
 ### let the agent register its own Chrome (recommended)
 
@@ -59,7 +61,7 @@ It writes `skills/ovis-browser/SKILL.md` in two places: `~/.claude` (Claude Code
 
 An agent does not always pick the skill by itself. Claude Code did in testing; Codex, which has a browser tool of its own, used that one instead until it was asked by name. Say "open it with ovis-browser" in the request, or put one line in the agent's instructions (`AGENTS.md`, `CLAUDE.md`), for example: *In a herdr pane, open browsers with the ovis-browser skill, not a built-in browser tool.*
 
-From then on, an agent in a pane that needs a browser runs `ovis-browser start`, drives the printed `cdp_url`, and you open the pane's **Browser** tab. The helper reads `OVIS_URL` (default `http://127.0.0.1:7317`) and `OVIS_TOKEN` when the server asks for one.
+From then on, an agent in a pane that needs a browser runs `ovis-browser start`, drives the printed `cdp_url`, and you open the pane's **Browser** tab. The helper reads `OVIS_URL` (default `http://127.0.0.1:7318`) and `OVIS_TOKEN` when the server asks for one.
 
 ```bash
 bun scripts/ovis-browser.ts start --url https://example.com   # launch or reuse this pane's Chrome and register it
@@ -75,7 +77,7 @@ bun scripts/ovis-browser.ts stop                               # unregister and 
    ```
 2. Register it for a pane. Inside a pane the ID is `$HERDR_PANE_ID`; elsewhere `herdr pane list` prints them.
    ```bash
-   curl -X POST 'http://127.0.0.1:7317/api/pane/browser/register' \
+   curl -X POST 'http://127.0.0.1:7318/api/pane/browser/register' \
      -H 'content-type: application/json' \
      --data '{"pane_id":"w1:p1","cdp_url":"http://127.0.0.1:9222"}'
    ```

@@ -1,5 +1,5 @@
-id = "devswha.ovis"
-name = "Ovis"
+id = "icingrain.ovis-with-browser"
+name = "Ovis with Browser"
 version = "0.4.22"
 min_herdr_version = "0.9.0"
 description = "Ovis, the browser and phone client for herdr: chat and live terminal for every agent pane, remote PCs over SSH, web push alerts"
@@ -120,12 +120,12 @@ platforms = ["windows"]
 id = "phone"
 title = "Phone setup"
 contexts = ["workspace"]
-command = ["herdr", "plugin", "pane", "open", "--plugin", "devswha.ovis", "--entrypoint", "phone", "--placement", "zoomed", "--focus"]
+command = ["herdr", "plugin", "pane", "open", "--plugin", "icingrain.ovis-with-browser", "--entrypoint", "phone", "--placement", "zoomed", "--focus"]
 platforms = ["linux", "macos"]
 
 [[actions]]
 id = "phone-windows"
 title = "Phone setup"
 contexts = ["workspace"]
-command = ["herdr", "plugin", "pane", "open", "--plugin", "devswha.ovis", "--entrypoint", "phone-windows", "--placement", "zoomed", "--focus"]
+command = ["herdr", "plugin", "pane", "open", "--plugin", "icingrain.ovis-with-browser", "--entrypoint", "phone-windows", "--placement", "zoomed", "--focus"]
 platforms = ["windows"]
