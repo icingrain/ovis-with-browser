@@ -11,7 +11,7 @@ import { dirname, join, resolve } from "node:path";
 const root = resolve(dirname(import.meta.filename), "..");
 const out = join(root, "dist-npm");
 /** the package's own version, apart from Ovis's: it moves when the helper, the skill or the setup command changes */
-export const PACKAGE_VERSION = "0.1.0";
+export const PACKAGE_VERSION = "0.2.0";
 /** the Ovis release this fork's Browser tab was last rebased onto and tested with */
 export const OVIS_TESTED = "0.4.22";
 const FILES = [
@@ -43,21 +43,16 @@ export function packageJson(version: string, ovisTested: string) {
 
 const README = `# ovis-with-browser
 
-Setup for the Browser tab of [Ovis with Browser](https://github.com/icingrain/ovis-with-browser): the agent's Chrome, live in Ovis.
+Setup for [Ovis with Browser](https://github.com/icingrain/ovis-with-browser): the agent's Chrome, live in a Browser tab next to its chat and terminal.
 
-Needs [Bun](https://bun.sh), herdr and the Ovis with Browser plugin (\`herdr plugin link\` from its repository).
-
-\`\`\`bash
-bun add -g ovis-with-browser      # installs the ovis-browser helper and the setup command
-ovis-with-browser setup           # asks: install the skill? which tailnet address?
-\`\`\`
-
-Without a terminal, or to skip the questions:
+Needs [Bun](https://bun.sh), [herdr](https://github.com/herdrdev/herdr) and a desktop Chrome.
 
 \`\`\`bash
-ovis-with-browser setup --skill --tailnet separate        # skill, plus a separate tailnet address (8443)
-ovis-with-browser setup --no-skill --tailnet existing     # the address already in use (port 443)
+bun add -g ovis-with-browser
+ovis-with-browser setup
 \`\`\`
+
+\`setup\` installs the Ovis with Browser plugin from GitHub and starts it, then asks whether to install the agent skill and which tailnet address a mobile device should use. Flags answer for it (\`--skill\`, \`--no-skill\`, \`--tailnet existing|separate|skip\`, \`--no-plugin\`, \`--ref\`, \`--port\`, \`--https-port\`, \`--force\`). Details: https://github.com/icingrain/ovis-with-browser/blob/main/docs/details.md
 
 Version ${PACKAGE_VERSION} was tested with Ovis ${OVIS_TESTED} (the release this fork is rebased onto). Windows is not tested yet.
 `;

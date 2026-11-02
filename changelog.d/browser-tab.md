@@ -12,4 +12,4 @@
   it on their own.
 - This fork is the herdr plugin `icingrain.ovis-with-browser` and serves on port 7318 by default, so it
   runs beside an `devswha.ovis` install (port 7317) without sharing its state.
-- An `ovis-with-browser` npm package (built by `scripts/build-npm-package.ts`) with a `setup` command: the helper, the agent skill, and a tailnet address (existing, separate or none).
+- An `ovis-with-browser` npm package (built by `scripts/build-npm-package.ts`) with a `setup` command that installs and starts the plugin from GitHub, writes its settings, and offers the agent skill and a tailnet address (existing, separate or none).
