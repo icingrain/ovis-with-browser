@@ -123,6 +123,7 @@ The bar under the page has **Right click**, **Keyboard** (opens the phone keyboa
 ## limits
 
 - Chrome has to run on the same computer as the Ovis server, as a desktop (not headless) Chrome; a pane on a remote PC has no Browser tab.
+- Windows is not tested yet: the Browser tab, the helper and the skill installer were only run on macOS. The Windows paths in `scripts/ovis-browser.ts` and `scripts/install-browser-skill.ts` are written but unverified.
 - Native date, color and file pickers, paste and IME composition are not relayed.
 - What you see is a stream: a page's reaction reaches the screen after the network round trip plus Chrome's capture and encode time. Phones receive smaller, lower quality frames to keep up.
 - The registered Chrome is fully controllable by anyone who can open Ovis, so the usual Ovis access rules (token, paired devices, Tailscale) are the protection. Register only a Chrome you are willing to share.
