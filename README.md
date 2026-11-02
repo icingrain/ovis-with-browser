@@ -8,6 +8,10 @@
   <strong>The browser an agent drives, in a tab next to its chat and terminal.</strong>
 </p>
 
+<p align="center">
+  <strong>English</strong> · <a href="README.ko.md">한국어</a>
+</p>
+
 A fork of [Ovis](https://github.com/devswha/ovis), the browser and mobile client for [herdr](https://github.com/herdrdev/herdr). Everything Ovis does is still here; this fork adds one thing: a **Browser** tab. When a coding agent works in a Chrome, you see that same Chrome tab live in Ovis, on your computer or on a mobile device, and you can take over when the agent needs a hand.
 
 For everything else (install, agents, chat, terminal, push alerts, remote PCs) see the [Ovis README](https://github.com/devswha/ovis#readme) and its [user guide](https://github.com/devswha/ovis/blob/main/docs/guide.md). This README covers only what the fork adds.
