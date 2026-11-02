@@ -47,15 +47,17 @@ bun run server        # http://127.0.0.1:7317; add HOST=$(tailscale ip -4) to op
 
 ### let the agent register its own Chrome (recommended)
 
-Install the skill once. It tells Claude Code, Codex and OpenCode to start their Chrome through `scripts/ovis-browser.ts`, which launches a Chrome with its own profile and registers it for the pane the agent runs in (`$HERDR_PANE_ID`).
+Install the skill once. It tells the agent to start its Chrome through `scripts/ovis-browser.ts`, which launches a Chrome with its own profile and registers it for the pane the agent runs in (`$HERDR_PANE_ID`).
 
 ```bash
 bun scripts/install-browser-skill.ts          # shows what it would write, writes nothing
-bun scripts/install-browser-skill.ts --yes    # installs ovis-browser into each agent folder found
+bun scripts/install-browser-skill.ts --yes    # installs ovis-browser
 bun scripts/install-browser-skill.ts --remove --yes
 ```
 
-If you run Ovis as a herdr plugin, the same install is the plugin action **Install the Browser tab skill**. It writes `skills/ovis-browser/SKILL.md` under `~/.claude`, `~/.codex` and `~/.config/opencode`, only where that agent's folder exists (`--agent claude|codex|opencode` forces one), and only replaces files it wrote itself. Restart running agent sessions afterwards.
+It writes `skills/ovis-browser/SKILL.md` in two places: `~/.claude` (Claude Code reads only its own folder; skipped when `~/.claude` is missing) and the shared `~/.agents/skills`, the folder herdr's own skill lives in, which Codex and the other agents of the open [`skills`](https://github.com/vercel-labs/skills) CLI read. `--agent codex` or `--agent opencode` adds an agent's own folder too. It only replaces files it wrote itself, and restart running agent sessions afterwards. If you run Ovis as a herdr plugin, the same install is the plugin action **Install the Browser tab skill**; nothing runs it for you.
+
+An agent does not always pick the skill by itself. Claude Code did in testing; Codex, which has a browser tool of its own, used that one instead until it was asked by name. Say "open it with ovis-browser" in the request, or put one line in the agent's instructions (`AGENTS.md`, `CLAUDE.md`), for example: *In a herdr pane, open browsers with the ovis-browser skill, not a built-in browser tool.*
 
 From then on, an agent in a pane that needs a browser runs `ovis-browser start`, drives the printed `cdp_url`, and you open the pane's **Browser** tab. The helper reads `OVIS_URL` (default `http://127.0.0.1:7317`) and `OVIS_TOKEN` when the server asks for one.
 

@@ -86,7 +86,7 @@ contexts = ["workspace"]
 command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/plugin.ps1", "status"]
 platforms = ["windows"]
 
-# Writes the "ovis-browser" skill into Claude Code, Codex and OpenCode so an agent starts its Chrome through
+# Writes the "ovis-browser" skill into Claude Code's folder and the shared ~/.agents/skills so an agent starts its Chrome through
 # scripts/ovis-browser.ts, which registers it for its pane (Browser tab). It runs only when a person picks it.
 [[actions]]
 id = "install-browser-skill"

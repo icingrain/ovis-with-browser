@@ -23,17 +23,23 @@ describe("browser skill installer", () => {
     expect(helperCommand("/r", "linux")).toBe('sh "/r/scripts/with-bun.sh" "/r/scripts/ovis-browser.ts"');
   });
 
-  it("writes nothing without --yes, and only into agents whose folder exists", () => withHome((home) => {
-    mkdirSync(join(home, ".claude"));
+  it("writes nothing without --yes, and by default only into Claude Code's folder (when it exists) and the shared one", () => withHome((home) => {
+    mkdirSync(join(home, ".claude")); mkdirSync(join(home, ".codex"));
     const preview = installBrowserSkill({ home, env: {} });
-    expect(preview.map((result) => [result.agent, result.action])).toEqual([["claude", "would-install"]]);
+    expect(preview.map((result) => [result.agent, result.action])).toEqual([["claude", "would-install"], ["agents", "would-install"]]);
     expect(existsSync(join(home, ".claude", "skills"))).toBe(false);
     const done = installBrowserSkill({ home, env: {}, write: true });
-    expect(done[0]!.action).toBe("installed");
+    expect(done.map((result) => result.action)).toEqual(["installed", "installed"]);
+    expect(existsSync(join(home, ".agents", "skills", "ovis-browser", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(home, ".codex", "skills"))).toBe(false);
     const file = join(home, ".claude", "skills", "ovis-browser", "SKILL.md");
     expect(readFileSync(file, "utf8")).toContain(SKILL_BANNER);
     expect(readFileSync(file, "utf8")).not.toContain("{{HELPER}}");
     expect(installBrowserSkill({ home, env: {}, write: true })[0]!.action).toBe("updated");
+  }));
+
+  it("leaves Claude Code's folder out when ~/.claude is not there", () => withHome((home) => {
+    expect(installBrowserSkill({ home, env: {} }).map((result) => result.agent)).toEqual(["agents"]);
   }));
 
   it("installs where --agent says even when the agent's folder is not there yet", () => withHome((home) => {
