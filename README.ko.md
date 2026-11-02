@@ -66,7 +66,7 @@ bun add -g ovis-with-browser
 ovis-with-browser setup
 ```
 
-터미널에서는 질문하고, 플래그로 대신 답할 수 있습니다(`--skill`, `--no-skill`, `--tailnet existing|separate|skip`, `--https-port`, `--force`). 다른 서비스가 쓰는 tailnet 주소는 `--force` 없이는 바꾸지 않습니다. 아직 발행 전이며, `bun scripts/build-npm-package.ts`로 `dist-npm/`에 빌드할 수 있습니다.
+터미널에서는 질문하고, 플래그로 대신 답할 수 있습니다(`--skill`, `--no-skill`, `--tailnet existing|separate|skip`, `--https-port`, `--force`). 다른 서비스가 쓰는 tailnet 주소는 `--force` 없이는 바꾸지 않습니다. [npm 패키지](https://www.npmjs.com/package/ovis-with-browser)이고, `bun scripts/build-npm-package.ts`로 `dist-npm/`에 직접 빌드할 수도 있습니다.
 
 ### 에이전트가 자기 Chrome을 직접 등록하게 하기 (권장)
 

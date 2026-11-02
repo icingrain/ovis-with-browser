@@ -66,7 +66,7 @@ bun add -g ovis-with-browser
 ovis-with-browser setup
 ```
 
-It asks when it runs in a terminal; flags answer for it (`--skill`, `--no-skill`, `--tailnet existing|separate|skip`, `--https-port`, `--force`). It never replaces a tailnet address another service uses unless `--force` is given. Not published yet; `bun scripts/build-npm-package.ts` builds it into `dist-npm/`.
+It asks when it runs in a terminal; flags answer for it (`--skill`, `--no-skill`, `--tailnet existing|separate|skip`, `--https-port`, `--force`). It never replaces a tailnet address another service uses unless `--force` is given. [npm package](https://www.npmjs.com/package/ovis-with-browser); `bun scripts/build-npm-package.ts` builds it into `dist-npm/`.
 
 ### let the agent register its own Chrome (recommended)
 
