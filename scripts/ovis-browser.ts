@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 /**
  * Starts a Chrome the Ovis Browser tab can show and registers it for the herdr pane this runs in, so
  * an agent that drives that Chrome over its DevTools port is watched (and steered) from Ovis.

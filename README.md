@@ -53,6 +53,17 @@ OVIS_STATE_DIR=~/.local/state/ovis-with-browser
 
 Open `http://127.0.0.1:7318`, or from a mobile device over Tailscale: `tailscale serve --https=8443 --bg http://127.0.0.1:7318`. The install scripts, the Mac and Windows apps in the Ovis README still install upstream's Ovis, not this fork.
 
+### setup command
+
+The `ovis-with-browser` npm package puts the helper on your PATH and walks through the rest: the agent skill, then a tailnet address for mobile devices (the one already in use, a separate one, or none).
+
+```bash
+bun add -g ovis-with-browser
+ovis-with-browser setup
+```
+
+It asks when it runs in a terminal; flags answer for it (`--skill`, `--no-skill`, `--tailnet existing|separate|skip`, `--https-port`, `--force`). It never replaces a tailnet address another service uses unless `--force` is given. Not published yet; `bun scripts/build-npm-package.ts` builds it into `dist-npm/`.
+
 ### let the agent register its own Chrome (recommended)
 
 Install the skill once. It tells the agent to start its Chrome through `scripts/ovis-browser.ts`, which launches a Chrome with its own profile and registers it for the pane the agent runs in (`$HERDR_PANE_ID`).
