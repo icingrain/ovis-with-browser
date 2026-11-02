@@ -25,6 +25,7 @@ export interface BrowserHelperOptions {
   token: string | null;
   url: string;
   chrome: string | null;
+  home?: string;
 }
 
 /** The options for an argument list and environment; throws a message fit to print. */
@@ -124,6 +125,13 @@ function freePort(): number {
   return port;
 }
 
+/** Register the pane's DevTools URL with Ovis; throws a message fit to print when Ovis refuses it. */
+async function registerBrowser(options: BrowserHelperOptions, cdpUrl: string): Promise<string> {
+  const response = await api(options, "/api/pane/browser/register", { method: "POST", body: JSON.stringify({ pane_id: options.pane, cdp_url: cdpUrl }) });
+  if (!response.ok) throw new Error(await ovisError(response));
+  return cdpUrl;
+}
+
 export async function start(options: BrowserHelperOptions): Promise<string> {
   let session: { cdpUrl: string } | null;
   try {
@@ -131,12 +139,21 @@ export async function start(options: BrowserHelperOptions): Promise<string> {
   } catch (error) {
     throw new Error(`Cannot reach Ovis at ${options.ovis}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  const directory = profileDirectory(options.pane, options.home);
   if (session) {
     const port = Number(new URL(session.cdpUrl).port);
     if (await cdpAnswers(port)) return session.cdpUrl;
     await api(options, `/api/pane/browser${paneQuery(options)}`, { method: "DELETE" });
+  } else {
+    // Ovis may have restarted and lost its in-memory registration while this pane's Chrome is
+    // still up on the port from its last run. Re-register that live Chrome instead of launching
+    // another one into the same profile: the second launch is handed to the running process,
+    // the new one exits, and its fresh debugging port never answers in time.
+    const state = readState(directory);
+    if (state && (await cdpAnswers(state.port))) {
+      return registerBrowser(options, `http://127.0.0.1:${state.port}`);
+    }
   }
-  const directory = profileDirectory(options.pane);
   mkdirSync(directory, { recursive: true });
   const port = freePort();
   const chrome = spawn(findChrome(options), [
@@ -154,13 +171,13 @@ export async function start(options: BrowserHelperOptions): Promise<string> {
   }
   writeFileSync(join(directory, "state.json"), JSON.stringify({ pid: chrome.pid, port } satisfies Partial<HelperState>));
   const cdpUrl = `http://127.0.0.1:${port}`;
-  const response = await api(options, "/api/pane/browser/register", { method: "POST", body: JSON.stringify({ pane_id: options.pane, cdp_url: cdpUrl }) });
-  if (!response.ok) {
+  try {
+    return await registerBrowser(options, cdpUrl);
+  } catch (error) {
     try { process.kill(chrome.pid!); } catch { /* already gone */ }
     rmSync(join(directory, "state.json"), { force: true });
-    throw new Error(await ovisError(response));
+    throw error;
   }
-  return cdpUrl;
 }
 
 export async function stop(options: BrowserHelperOptions): Promise<string> {
