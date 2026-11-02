@@ -19,9 +19,17 @@ describe("HTML blocks in a markdown file", () => {
     expect(logo).toMatchObject({ type: "paragraph", align: "center" });
     const image = logo?.type === "paragraph" ? logo.lines.flat().find((node) => node.type === "image") : undefined;
     expect(image).toMatchObject({ type: "image", src: "public/icons/icon-192.png", alt: "Ovis", width: 100 });
-    const languages = blocks.find((block) => block.type === "paragraph" && text(block.lines.flat()).includes("English"));
+    // the nav lines of Ovis's own README header, whose pages this fork's README does not repeat
+    const nav = parseMarkdown([
+      "<p align=\"center\">",
+      "  <strong>English</strong> · <a href=\"README.ko.md\">한국어</a>",
+      "  <br>",
+      "  <a href=\"https://ovis.sh/\">website</a>",
+      "</p>",
+    ].join("\n"), 0, true);
+    const languages = nav.find((block) => block.type === "paragraph" && text(block.lines.flat()).includes("English"));
     expect(languages?.type === "paragraph" && languages.lines.flat().some((node) => node.type === "file" && node.path === "README.ko.md")).toBe(true);
-    const site = blocks.find((block) => block.type === "paragraph" && text(block.lines.flat()).includes("website"));
+    const site = nav.find((block) => block.type === "paragraph" && text(block.lines.flat()).includes("website"));
     expect(site?.type === "paragraph" && site.lines.flat().some((node) => node.type === "link" && node.href === "https://ovis.sh/")).toBe(true);
   });
 

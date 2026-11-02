@@ -333,7 +333,6 @@ export function App() {
 
 
   const { selectedPane } = useSelectedPane({ snapshot, selectedPaneId });
-  const { browserSession, setBrowserSession, browserSessionGoneRef } = useBrowserSession({ selectedPaneId, selectedMachineId });
   useScreenWakeLock(settings.keepScreenOn && locked === false && selectedPane !== null);
   const { selectedWorkspace, presentedPaneId } = useSelectedLayout({ selectedPane, snapshot, drawerOpen, selectedMachineId, selectedPaneId, setSelectedPaneId, setAutoSelected });
   // the selected pane has a tab strip to rename in: its pane and workspace are in the roster
@@ -373,7 +372,7 @@ export function App() {
   const activity = useSidebarActivityState(machines, selectedMachineId, presentedPaneId, paneInFront, shareSeen);
 
   const { pickView, setView } = usePaneViewPicks({ browserReturnViews, setViewPicks, setNotificationViewTarget, setTerminalPeek, setLens, setAutoSelected, selectedPaneId, selectedMachineId });
-  const browserSessionGone = useCallback((paneId: string) => {
+  const onBrowserGone = (paneId: string) => {
     const owner = lensOwner("local", paneId);
     const storageKey = `ovis:view:${paneStorageId("local", paneId)}`;
     const pane = snapshot?.panes.find((entry) => entry.pane_id === paneId);
@@ -385,12 +384,11 @@ export function App() {
       if (paneLifetimes.paneStorage.getItem(storageKey) === "browser") paneLifetimes.paneStorage.setItem(storageKey, fallback);
     } catch { /* private mode */ }
     if (selectedMachineId === "local" && selectedPaneId === paneId) {
-      setBrowserSession(null);
       setLens((current) => current.view === "browser" ? { ...current, view: fallback } : current);
       setNotificationViewTarget((current) => current?.pane_id === paneId && current.view === "browser" ? null : current);
     }
-  }, [lenses, selectedMachineId, selectedPaneId, snapshot, terminalAttach, setViewPicks, setLens, setNotificationViewTarget]);
-  browserSessionGoneRef.current = browserSessionGone;
+  };
+  const { browserSession, browserSessionGone } = useBrowserSession({ selectedPaneId, selectedMachineId, onGone: onBrowserGone });
   const { unsentFor, openUnsent, closeUnsent, recover } = useUnsentRecovery({ selectedMachineId, selectedPaneId, setView, pickView });
   // on a phone a peek is a step of its own: Back takes the chat back, as it closes a sheet. It stays
   // up under a sheet or Settings opened over it: their close, or a Back, comes back to the peek
