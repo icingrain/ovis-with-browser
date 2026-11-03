@@ -85,6 +85,17 @@ An agent does not always pick the skill by itself. Claude Code did in testing; C
 4. **Input comes back.** Clicks, moves, scrolls and keys go to the server and are replayed in Chrome. Pointer moves are coalesced: only the latest is sent while a request is in flight.
 5. **Control is explicit.** The view starts read-only. The first tap or key takes control and is not sent to the page. Esc, the release button or 60 seconds without input give it back.
 
+## latency
+
+What you see is a stream, so a page's reaction reaches the screen after the network round trip plus Chrome's capture and encode time. That cannot be removed; these keep input from piling up on top of it:
+
+- **Pointer moves are coalesced.** The client sends only the latest move while a request is in flight, so the cursor never trails behind a queue ([src/lib/browserInputQueue.ts](../src/lib/browserInputQueue.ts)).
+- **The cursor is drawn locally** in Trackpad mode, ahead of the server's answer. The real pointer in Chrome follows.
+- **The server batches input and keeps only the newest frame.** Input goes to Chrome over CDP in batches, and a frame that is still unsent when a newer one arrives is dropped ([server/browser-sessions.ts](../server/browser-sessions.ts)).
+- **Touch devices get smaller frames:** at most 1280×720, at JPEG quality 45, which cuts transfer and encode time.
+
+These were judged by feel, not measured. A slow link still shows as lag; more would need frame sizes that follow the link, or sending only what changed.
+
 ## limits
 
 - Chrome has to run on the same computer as the Ovis server, as a desktop (not headless) Chrome; a pane on a remote PC has no Browser tab.
